@@ -1,10 +1,8 @@
 <div align="center">
 
-# 🎲 Dices — hola w
+# 🎲 Dices
 
 **Un adictivo juego incremental e idle de dados poliédricos 3D, combos de póker y física de casino.**
-
-**Hecho con mucha fé y sueño (ptm, que horror)**
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Vite](https://img.shields.io/badge/Vite-6.x-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)

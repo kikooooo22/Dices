@@ -10,9 +10,10 @@ export type UpgradeId =
   | 'table_magnetism'
   | 'ghost_dice'
   | 'combo_mult'
-  | 'hold_to_roll';
+  | 'hold_to_roll'
+  | 'cosmic_secret';
 
-export type UpgradeCategory = 'dice' | 'automation' | 'probability' | 'combos';
+export type UpgradeCategory = 'dice' | 'automation' | 'probability' | 'combos' | 'milestones';
 
 export interface UpgradeDef {
   id: UpgradeId;
@@ -141,12 +142,34 @@ export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
     growth: 1.6,
     maxLevel: 20
   },
+
+  // 5. Secretos y Especiales
+  cosmic_secret: {
+    id: 'cosmic_secret',
+    name: 'Misterio Cósmico',
+    desc: 'Un antiguo secreto enigmático. (Efecto en desarrollo para futuras actualizaciones)',
+    category: 'milestones',
+    baseCost: 25000,
+    growth: 3.2,
+    maxLevel: 5
+  },
 };
 
 export const getCost = (id: UpgradeId, currentLevel: number): number => {
   const upg = UPGRADES[id];
   if (!upg) return 999999999;
   return Math.floor(upg.baseCost * Math.pow(upg.growth, currentLevel));
+};
+
+export const getMilestoneRequiredUpgrades = (currentLevel: number): number => {
+  // Cantidad acumulada de mejoras estándar necesarias para desbloquear cada nivel de Secreto:
+  // Lvl 0 -> 1: 10
+  // Lvl 1 -> 2: 18 (+8)
+  // Lvl 2 -> 3: 28 (+10)
+  // Lvl 3 -> 4: 40 (+12)
+  // Lvl 4 -> 5: 55 (+15)
+  const thresholds = [10, 18, 28, 40, 55];
+  return thresholds[Math.min(currentLevel, thresholds.length - 1)] ?? 10;
 };
 
 export const getDiceCount = (level: number): number => Math.min(10, 1 + level);

@@ -8,47 +8,48 @@ import { useGameState } from './hooks/useGameState';
 import { DiceTable, SpinningDiePreview } from './components/DiceTable';
 import { PolyhedronDie } from './components/Polyhedron3D';
 import { Shop } from './components/Shop';
-import { Milestones } from './components/Milestones';
 import { ResetModal } from './components/ResetModal';
 import { TutorialOverlay } from './components/TutorialOverlay';
-import { 
-  getManualCooldown, 
-  getDiceSides, 
-  getAutoRollsPerSec, 
-  getHoldToRollEnabled, 
+import {
+  getManualCooldown,
+  getDiceSides,
+  getAutoRollsPerSec,
+  getHoldToRollEnabled,
   getAnimationSpeedMult,
-  UPGRADES, 
+  UPGRADES,
   UpgradeId,
-  getCost, 
-  getFlatBonus, 
+  getCost,
+  getFlatBonus,
   getMaterialMult,
-  getMaterialTierName
+  getMaterialTierName,
+  getMilestoneRequiredUpgrades
 } from './game/engine';
-import { 
-  ShoppingCart, 
-  X, 
-  Settings, 
-  Flame, 
-  Volume2, 
-  VolumeX, 
-  BarChart2, 
-  Pause, 
-  Wand2, 
-  EyeOff, 
-  PartyPopper, 
+import {
+  ShoppingCart,
+  X,
+  Settings,
+  Flame,
+  Volume2,
+  VolumeX,
+  BarChart2,
+  Pause,
+  Wand2,
+  EyeOff,
+  PartyPopper,
   CheckCheck,
   Monitor,
   Eye,
   RotateCw,
   Zap,
   HelpCircle,
-  Lock
+  Lock,
+  Dices
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  playRollSound, 
-  getMasterVolume, 
-  setMasterVolume, 
+import {
+  playRollSound,
+  getMasterVolume,
+  setMasterVolume,
   playClickSound,
   playBuySound,
   playPartyModeMusic
@@ -60,22 +61,24 @@ interface GraphicsSettings {
   showFloatingTexts: boolean;
   showSpinningPreview: boolean;
   enableConfetti: boolean;
+  enableDiceRotationAnimation: boolean;
 }
 
 const DEFAULT_GRAPHICS: GraphicsSettings = {
   showFloatingTexts: true,
   showSpinningPreview: true,
   enableConfetti: true,
+  enableDiceRotationAnimation: true,
 };
 
-const AutoRollIndicator = ({ 
-  rollsPerSec, 
-  isPaused, 
-  onToggle 
-}: { 
-  rollsPerSec: number; 
-  isPaused: boolean; 
-  onToggle: () => void; 
+const AutoRollIndicator = ({
+  rollsPerSec,
+  isPaused,
+  onToggle
+}: {
+  rollsPerSec: number;
+  isPaused: boolean;
+  onToggle: () => void;
 }) => {
   if (rollsPerSec <= 0) return null;
   const duration = 1 / rollsPerSec;
@@ -83,22 +86,21 @@ const AutoRollIndicator = ({
   const circumference = 2 * Math.PI * radius;
 
   return (
-    <button 
+    <button
       onClick={() => { playClickSound(); onToggle(); }}
-      className={`relative w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl border-2 border-b-4 flex items-center justify-center overflow-hidden shadow-inner flex-shrink-0 transition-all cursor-pointer hover:scale-105 active:scale-95 ${
-        isPaused 
-          ? 'bg-slate-800 border-amber-500/50 border-b-amber-800 shadow-[0_2px_0_#78350f]' 
+      className={`relative w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl border-2 border-b-4 flex items-center justify-center overflow-hidden shadow-inner flex-shrink-0 transition-all cursor-pointer hover:scale-105 active:scale-95 ${isPaused
+          ? 'bg-slate-800 border-amber-500/50 border-b-amber-800 shadow-[0_2px_0_#78350f]'
           : 'bg-slate-800 border-blue-500/60 border-b-blue-800 shadow-[0_2px_0_#1e40af]'
-      }`} 
+        }`}
       title={`Auto-Roller: ${rollsPerSec.toFixed(2)} tiros/seg (${isPaused ? 'Pausado - Clic para reanudar' : 'Activo - Clic para pausar'})`}
     >
       <span className="text-[10px] sm:text-xs font-pixel font-bold text-blue-400 z-10">
-        {rollsPerSec >= 1 ? `${rollsPerSec.toFixed(1)}/s` : `1/${(1/rollsPerSec).toFixed(1)}s`}
+        {rollsPerSec >= 1 ? `${rollsPerSec.toFixed(1)}/s` : `1/${(1 / rollsPerSec).toFixed(1)}s`}
       </span>
-      
+
       {!isPaused && (
-        <svg 
-          viewBox="0 0 44 44" 
+        <svg
+          viewBox="0 0 44 44"
           className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none opacity-40"
         >
           <motion.circle
@@ -120,7 +122,7 @@ export default function App() {
   const [isOptionsOpen, setIsOptionsOpen] = useState(false);
   const [isPartyMode, setIsPartyMode] = useState(false);
   const [volume, setVolume] = useState(() => getMasterVolume());
-  
+
   // Interactive Onboarding Tutorial Step (1, 2, 25, 3, 4, 5, 6, 0 = Inactive)
   const [tutorialStep, setTutorialStep] = useState<number>(() => {
     try {
@@ -146,14 +148,14 @@ export default function App() {
     setTutorialStep(0);
     try {
       localStorage.setItem('pal_tutorial_completed', 'true');
-    } catch (e) {}
+    } catch (e) { }
   };
 
   const handleFinishTutorial = () => {
     setTutorialStep(0);
     try {
       localStorage.setItem('pal_tutorial_completed', 'true');
-    } catch (e) {}
+    } catch (e) { }
     confetti({
       particleCount: 50,
       spread: 90,
@@ -162,13 +164,13 @@ export default function App() {
       zIndex: 9999
     });
   };
-  
+
   // Graphics & Performance settings with localStorage persistence
   const [graphics, setGraphics] = useState<GraphicsSettings>(() => {
     try {
       const saved = localStorage.getItem('pal_graphics_settings');
       if (saved) return { ...DEFAULT_GRAPHICS, ...JSON.parse(saved) };
-    } catch (e) {}
+    } catch (e) { }
     return DEFAULT_GRAPHICS;
   });
 
@@ -178,53 +180,55 @@ export default function App() {
       const updated = { ...prev, [key]: value };
       try {
         localStorage.setItem('pal_graphics_settings', JSON.stringify(updated));
-      } catch (e) {}
+      } catch (e) { }
       return updated;
     });
   };
 
-  const { 
-    state, 
-    buyUpgrade, 
+  const {
+    state,
+    buyUpgrade,
     addPoints,
     unlockCheats,
     disableCheats,
     maxAllUpgrades,
-    rollDice, 
-    lastRoll, 
-    triggerMilestone1, 
-    triggerMilestone2, 
-    hardReset, 
-    toggleAutoRoll, 
-    isAutoRollPaused 
+    rollDice,
+    lastRoll,
+    triggerMilestone1,
+    triggerMilestone2,
+    hardReset,
+    toggleAutoRoll,
+    isAutoRollPaused
   } = useGameState(isOptionsOpen);
 
   const [cooldownActive, setCooldownActive] = useState(false);
   const [cooldownFraction, setCooldownFraction] = useState(0); // 0 (ready) to 1 (just fired)
-  const [showM1, setShowM1] = useState(false);
-  const [showM2, setShowM2] = useState(false);
   const [isShopOpen, setIsShopOpen] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
-  
+
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = parseFloat(e.target.value);
     setVolume(v);
     setMasterVolume(v);
   };
-  
+
   const holdIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isHoldingRef = useRef(false);
   const progressReqRef = useRef<number | null>(null);
   const lastRollTimeRef = useRef(0);
 
-  const totalUpgradesBought = Object.values(state.upgrades).reduce((sum, lvl) => sum + lvl, 0);
+  const standardUpgradesBought = Object.entries(state.upgrades).reduce(
+    (sum, [id, lvl]) => id === 'cosmic_secret' ? sum : sum + lvl,
+    0
+  );
+  const currentSecretLvl = state.upgrades.cosmic_secret || 0;
+  const isSecretLocked = currentSecretLvl < UPGRADES.cosmic_secret.maxLevel && standardUpgradesBought < getMilestoneRequiredUpgrades(currentSecretLvl);
 
   const affordableCount = Object.values(UPGRADES).filter(def => {
+    if (def.category === 'milestones' && isSecretLocked) return false;
     const currentLevel = state.upgrades[def.id] || 0;
     return currentLevel < def.maxLevel && state.points >= getCost(def.id, currentLevel);
-  }).length 
-  + (totalUpgradesBought >= 15 && !state.milestone1Unlocked && state.points >= 150000 ? 1 : 0)
-  + (totalUpgradesBought >= 50 && !state.milestone2Unlocked && state.points >= 1000000000 ? 1 : 0);
+  }).length;
 
   const sides = getDiceSides(state.upgrades.dice_sides);
   const materialTier = state.upgrades.material_tier;
@@ -270,16 +274,16 @@ export default function App() {
   const handleRoll = (bypassCooldown = false) => {
     if (isOptionsOpen || tutorialStep === 25) return;
     if (cooldownActive && !bypassCooldown) return;
-    
+
     const cdMs = manualCooldown * 1000;
     const now = Date.now();
-    
+
     if (bypassCooldown && now - lastRollTimeRef.current < cdMs) return;
 
     lastRollTimeRef.current = now;
     playRollSound(materialTier);
     rollDice();
-    
+
     // Tutorial progression hooks: pop-up triggers on 3rd roll if < 50 points
     if (tutorialStep === 1) {
       tutorialRollsCountRef.current = 1;
@@ -301,18 +305,18 @@ export default function App() {
 
     setCooldownActive(true);
     setCooldownFraction(1);
-    
+
     const startTime = Date.now();
-    
+
     if (progressReqRef.current) {
       cancelAnimationFrame(progressReqRef.current);
     }
-    
+
     const updateProgress = () => {
       const elapsed = Date.now() - startTime;
       const fraction = Math.max(0, 1 - (elapsed / cdMs));
       setCooldownFraction(fraction);
-      
+
       if (elapsed < cdMs) {
         progressReqRef.current = requestAnimationFrame(updateProgress);
       } else {
@@ -332,9 +336,9 @@ export default function App() {
     if (e && e.currentTarget && e.pointerId !== undefined) {
       try {
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      } catch (err) {}
+      } catch (err) { }
     }
-    
+
     isHoldingRef.current = true;
     handleRoll(true);
     holdIntervalRef.current = setInterval(() => {
@@ -369,21 +373,7 @@ export default function App() {
     };
   }, []);
 
-  // Check and trigger secrets
-  const handleBuyM1 = () => {
-    if (state.points >= 150000 || state.milestone1Unlocked) {
-      triggerMilestone1();
-      setShowM1(true);
-    }
-  };
-
-  const handleBuyM2 = () => {
-    if (state.points >= 1000000000 || state.milestone2Unlocked) {
-      triggerMilestone2();
-      setShowM2(true);
-    }
-  };
-
+  // Shop Navigation
   const handleOpenShop = () => {
     if (tutorialStep > 0 && tutorialStep !== 3) return; // Shop locked before step 3
     playClickSound();
@@ -419,25 +409,21 @@ export default function App() {
   };
 
   return (
-    <div className={`w-full h-[100dvh] max-h-[100dvh] bg-slate-950 flex justify-center items-center overflow-hidden font-pixel select-none text-slate-100 p-0 sm:p-3 ${
-      isPartyMode ? 'party-mode-active' : ''
-    }`}>
+    <div className={`w-full h-[100dvh] max-h-[100dvh] bg-slate-950 flex justify-center items-center overflow-hidden font-pixel select-none text-slate-100 p-0 sm:p-3 ${isPartyMode ? 'party-mode-active' : ''
+      }`}>
       {/* Background glow ambiance */}
-      <div className={`fixed inset-0 pointer-events-none ${
-        isPartyMode 
-          ? 'bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-pink-600/30 via-purple-600/20 to-black animate-pulse' 
+      <div className={`fixed inset-0 pointer-events-none ${isPartyMode
+          ? 'bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-pink-600/30 via-purple-600/20 to-black animate-pulse'
           : 'bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-blue-900/10 via-transparent to-black'
-      }`} />
+        }`} />
 
       {/* Main App Canvas: Exactly 100dvh on mobile, 0 margin/overflow */}
-      <div className={`w-full max-w-lg bg-slate-900 h-[100dvh] max-h-[100dvh] sm:h-[94vh] sm:max-h-[880px] sm:rounded-3xl flex flex-col shadow-[0_0_60px_rgba(0,0,0,0.8)] border-0 sm:border sm:border-slate-800 relative overflow-hidden transition-all ${
-        isPartyMode ? 'party-dancer border-yellow-400' : ''
-      }`}>
-        
-        {/* Header HUD with z-50 so Shop Button is always on top */}
-        <header className={`bg-slate-950 text-white p-2.5 sm:p-4 z-50 shadow-md border-b border-slate-800 shrink-0 ${
-          isPartyMode ? 'party-dancer' : ''
+      <div className={`w-full max-w-lg bg-slate-900 h-[100dvh] max-h-[100dvh] sm:h-[94vh] sm:max-h-[880px] sm:rounded-3xl flex flex-col shadow-[0_0_60px_rgba(0,0,0,0.8)] border-0 sm:border sm:border-slate-800 relative overflow-hidden transition-all ${isPartyMode ? 'party-dancer border-yellow-400' : ''
         }`}>
+
+        {/* Header HUD with z-50 so Shop Button is always on top */}
+        <header className={`bg-slate-950 text-white p-2.5 sm:p-4 z-50 shadow-md border-b border-slate-800 shrink-0 ${isPartyMode ? 'party-dancer' : ''
+          }`}>
           <div className="flex justify-between items-center gap-2">
             <div>
               <div className="flex items-center gap-1.5">
@@ -462,14 +448,14 @@ export default function App() {
 
             {/* Action buttons with clickable auto-roller indicator */}
             <div className="flex items-center gap-1.5 sm:gap-2">
-              <AutoRollIndicator 
-                rollsPerSec={getAutoRollsPerSec(state.upgrades.auto_roller)} 
-                isPaused={isAutoRollPaused} 
+              <AutoRollIndicator
+                rollsPerSec={getAutoRollsPerSec(state.upgrades.auto_roller)}
+                isPaused={isAutoRollPaused}
                 onToggle={toggleAutoRoll}
               />
-              
+
               {/* Options button with sleek grey borders */}
-              <button 
+              <button
                 onClick={() => { playClickSound(); setIsOptionsOpen(true); }}
                 className="bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white p-2 sm:p-3 rounded-xl sm:rounded-2xl border-2 border-slate-700 border-b-4 border-b-slate-900 shadow-[0_2px_0_#0f172a] active:translate-y-0.5 active:border-b-2 active:shadow-none transition-all flex items-center justify-center cursor-pointer"
                 title="Opciones y Rendimiento"
@@ -478,16 +464,15 @@ export default function App() {
               </button>
 
               {/* Shop Button with Clean Visuals & Spotlight when Tutorial Step 3 */}
-              <button 
+              <button
                 onClick={handleOpenShop}
                 disabled={tutorialStep > 0 && tutorialStep !== 3}
-                className={`relative p-2 sm:p-3 rounded-xl sm:rounded-2xl border-2 transition-all flex items-center gap-1.5 font-bold ${
-                  tutorialStep === 3
+                className={`relative p-2 sm:p-3 rounded-xl sm:rounded-2xl border-2 transition-all flex items-center gap-1.5 font-bold ${tutorialStep === 3
                     ? 'bg-blue-600 text-white border-cyan-300 border-b-4 border-b-blue-800 ring-4 ring-cyan-400 ring-offset-2 ring-offset-slate-950 animate-bounce shadow-[0_0_30px_rgba(6,182,212,0.9)] cursor-pointer'
                     : tutorialStep > 0
                       ? 'bg-blue-600/75 text-white/80 border-blue-500/50 border-b-4 border-b-blue-900 cursor-not-allowed'
                       : 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 border-b-4 border-b-blue-800 shadow-[0_2px_0_#1e40af] active:translate-y-0.5 active:border-b-2 active:shadow-none cursor-pointer'
-                }`}
+                  }`}
                 title={tutorialStep > 0 && tutorialStep !== 3 ? 'Tienda bloqueada durante el tutorial' : 'Tienda de Mejoras'}
               >
                 {tutorialStep > 0 && tutorialStep !== 3 ? (
@@ -504,7 +489,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          
+
           {/* Last Roll Feed Strip */}
           <div className="mt-2 sm:mt-3 bg-slate-900/95 px-2.5 sm:px-3.5 py-1.5 sm:py-2.5 rounded-xl border border-slate-800 flex justify-between items-center text-xs sm:text-sm min-h-[2.25rem] sm:min-h-[2.75rem]">
             <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 overflow-hidden">
@@ -520,8 +505,8 @@ export default function App() {
                     </span>
                   )}
                   {lastRoll.combos.map((c, i) => (
-                    <span 
-                      key={i} 
+                    <span
+                      key={i}
                       className="text-[10px] sm:text-xs font-black bg-yellow-500/20 text-yellow-300 px-1.5 py-0.5 rounded border border-yellow-500/30 whitespace-nowrap"
                     >
                       {c.name} (x{c.mult})
@@ -540,15 +525,14 @@ export default function App() {
         </header>
 
         {/* Dice Virtual Casino Table with full highlight on Tutorial Step 1 */}
-        <main 
-          className={`flex-1 min-h-0 flex flex-col p-2 sm:p-4 bg-slate-950 relative overflow-hidden transition-all ${
-            tutorialStep === 1 ? 'ring-4 ring-emerald-400 ring-offset-2 ring-offset-slate-950 rounded-2xl sm:rounded-3xl shadow-[0_0_35px_rgba(52,211,153,0.4)] z-20' : ''
-          } ${tutorialStep === 3 ? 'pointer-events-none opacity-70' : ''}`}
+        <main
+          className={`flex-1 min-h-0 flex flex-col p-2 sm:p-4 bg-slate-950 relative overflow-hidden transition-all ${tutorialStep === 1 ? 'ring-4 ring-emerald-400 ring-offset-2 ring-offset-slate-950 rounded-2xl sm:rounded-3xl shadow-[0_0_35px_rgba(52,211,153,0.4)] z-20' : ''
+            } ${tutorialStep === 3 ? 'pointer-events-none opacity-70' : ''}`}
           style={{ touchAction: 'none' }}
           onPointerDown={startHold}
           onContextMenu={(e) => e.preventDefault()}
         >
-          <DiceTable 
+          <DiceTable
             faces={lastRoll?.faces || []}
             ghosts={lastRoll?.ghosts || []}
             sides={sides}
@@ -563,26 +547,26 @@ export default function App() {
             streakBonus={lastRoll?.streakBonus || 1}
             showFloatingTexts={graphics.showFloatingTexts}
             enableConfetti={graphics.enableConfetti}
+            enableTumbleAnimation={graphics.enableDiceRotationAnimation}
           />
         </main>
 
         {/* Physical Roll Action Bar */}
-        <footer className={`p-2.5 sm:p-4 bg-slate-950 border-t border-slate-800 z-10 pb-3 sm:pb-4 shadow-[0_-8px_25px_rgba(0,0,0,0.6)] flex items-center gap-2 sm:gap-3 shrink-0 ${
-          isPartyMode ? 'party-dancer' : ''
-        } ${tutorialStep === 3 ? 'pointer-events-none opacity-70' : ''}`}>
+        <footer className={`p-2.5 sm:p-4 bg-slate-950 border-t border-slate-800 z-10 pb-3 sm:pb-4 shadow-[0_-8px_25px_rgba(0,0,0,0.6)] flex items-center gap-2 sm:gap-3 shrink-0 ${isPartyMode ? 'party-dancer' : ''
+          } ${tutorialStep === 3 ? 'pointer-events-none opacity-70' : ''}`}>
           {/* Mini-table Preview Box with full D-sides and Dado label */}
           <div className="flex items-center bg-gradient-to-b from-emerald-800 via-emerald-700 to-emerald-900 rounded-xl sm:rounded-2xl px-2.5 sm:px-3.5 py-1 border-2 sm:border-4 border-amber-950 shadow-[inset_0_3px_8px_rgba(0,0,0,0.6),0_3px_0_#451a03] shrink-0 h-[58px] sm:h-[72px] gap-1.5 sm:gap-2.5">
             {graphics.showSpinningPreview ? (
               <SpinningDiePreview sides={sides} materialLevel={materialTier} />
             ) : (
               <div className="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center shrink-0">
-                <PolyhedronDie 
-                  sides={sides} 
-                  size={42} 
-                  rotX={22} 
-                  rotY={35} 
-                  rotZ={0} 
-                  materialLevel={materialTier} 
+                <PolyhedronDie
+                  sides={sides}
+                  size={42}
+                  rotX={22}
+                  rotY={35}
+                  rotZ={0}
+                  materialLevel={materialTier}
                 />
               </div>
             )}
@@ -601,26 +585,24 @@ export default function App() {
               </div>
             </div>
           </div>
-          
+
           {/* Giant Launch Button with Pure Smooth Cooldown Animation & Spotlight */}
           <button
             onClick={() => handleRoll(false)}
             disabled={cooldownActive}
             onPointerDown={startHold}
             style={{ touchAction: 'none' }}
-            className={`relative flex-1 h-[58px] sm:h-[72px] rounded-xl sm:rounded-2xl font-black text-lg sm:text-2xl uppercase tracking-widest overflow-hidden transition-all select-none cursor-pointer border-2 ${
-              tutorialStep === 1 || tutorialStep === 2
+            className={`relative flex-1 h-[58px] sm:h-[72px] rounded-xl sm:rounded-2xl font-black text-lg sm:text-2xl uppercase tracking-widest overflow-hidden transition-all select-none cursor-pointer border-2 ${tutorialStep === 1 || tutorialStep === 2
                 ? 'ring-4 ring-emerald-400 ring-offset-2 ring-offset-slate-950 shadow-[0_0_25px_rgba(52,211,153,0.7)]'
                 : ''
-            } ${
-              cooldownActive 
-                ? 'bg-slate-800 text-slate-300 border-slate-700 border-b-4 border-b-slate-900 shadow-inner translate-y-0.5' 
+              } ${cooldownActive
+                ? 'bg-slate-800 text-slate-300 border-slate-700 border-b-4 border-b-slate-900 shadow-inner translate-y-0.5'
                 : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border-emerald-400 border-b-4 border-b-emerald-800 shadow-[0_4px_0_#065f46] active:translate-y-1 active:border-b-2 active:shadow-none'
-            }`}
+              }`}
           >
             {/* Recharge Energy Bar */}
             {cooldownActive && (
-              <div 
+              <div
                 className="absolute inset-0 bg-gradient-to-r from-emerald-600/40 via-teal-500/50 to-emerald-400/40 pointer-events-none"
                 style={{
                   width: `${(1 - cooldownFraction) * 100}%`,
@@ -630,7 +612,7 @@ export default function App() {
 
             {/* Dark Mask on Uncharged Portion */}
             {cooldownActive && (
-              <div 
+              <div
                 className="absolute top-0 bottom-0 right-0 bg-black/45 pointer-events-none"
                 style={{
                   width: `${cooldownFraction * 100}%`,
@@ -647,7 +629,7 @@ export default function App() {
         {/* Shop Modal Drawer with Locked Tabs during Tutorial */}
         <AnimatePresence>
           {isShopOpen && (
-            <motion.div 
+            <motion.div
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
@@ -663,22 +645,19 @@ export default function App() {
                     {formatNumber(state.points)} pts disponibles
                   </div>
                 </div>
-                <button 
+                <button
                   onClick={handleCloseShop}
-                  className={`p-1.5 sm:p-2 bg-slate-800 hover:bg-slate-700 border-2 border-slate-700 border-b-4 border-b-slate-950 rounded-xl shadow-[0_2px_0_#0f172a] active:translate-y-0.5 active:shadow-none transition-all text-slate-300 cursor-pointer ${
-                    tutorialStep === 5 ? 'ring-4 ring-purple-400 ring-offset-2 ring-offset-slate-950 animate-bounce' : ''
-                  }`}
+                  className={`p-1.5 sm:p-2 bg-slate-800 hover:bg-slate-700 border-2 border-slate-700 border-b-4 border-b-slate-950 rounded-xl shadow-[0_2px_0_#0f172a] active:translate-y-0.5 active:shadow-none transition-all text-slate-300 cursor-pointer ${tutorialStep === 5 ? 'ring-4 ring-purple-400 ring-offset-2 ring-offset-slate-950 animate-bounce' : ''
+                    }`}
                 >
                   <X className="w-5 h-5 sm:w-6 sm:h-6" />
                 </button>
               </div>
 
               <div className="flex-1 overflow-hidden">
-                <Shop 
-                  state={state} 
+                <Shop
+                  state={state}
                   onBuy={handleBuyShopUpgrade}
-                  onBuyM1={handleBuyM1}
-                  onBuyM2={handleBuyM2}
                   onToggleAutoRoll={toggleAutoRoll}
                   onUnlockCheats={unlockCheats}
                   isAutoRollPaused={isAutoRollPaused}
@@ -690,30 +669,18 @@ export default function App() {
         </AnimatePresence>
 
         {/* Interactive Guided Tutorial Overlay (Rendered above Shop Drawer) */}
-        <TutorialOverlay 
-          step={tutorialStep} 
-          onSkip={skipTutorial} 
+        <TutorialOverlay
+          step={tutorialStep}
+          onSkip={skipTutorial}
           onDismissOkPrompt={() => setTutorialStep(2)}
           onDismissShopIntro={handleDismissShopIntro}
           onFinishTutorial={handleFinishTutorial}
         />
 
-        {/* Secretos Modals */}
-        <Milestones 
-          showM1={showM1}
-          showM2={showM2}
-          onCloseM1={() => setShowM1(false)}
-          onCloseM2={() => setShowM2(false)}
-          totalPoints={state.totalPointsEarned}
-          totalRolls={state.totalRolls}
-          highestStreak={state.highestStreak}
-          m1AlreadyUnlocked={state.milestone1Unlocked}
-        />
-
         {/* Options & Stats Modal with Tutorial (?) Replay Button */}
         <AnimatePresence>
           {isOptionsOpen && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -721,7 +688,7 @@ export default function App() {
               className="absolute inset-0 z-50 bg-black/85 flex flex-col items-center justify-center p-3 sm:p-4 backdrop-blur-md cursor-pointer"
             >
               {/* Pulsing "JUEGO PAUSADO" Banner outside popup */}
-              <motion.div 
+              <motion.div
                 initial={{ y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: -20, opacity: 0 }}
@@ -730,7 +697,7 @@ export default function App() {
                 <Pause className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400" /> JUEGO PAUSADO
               </motion.div>
 
-              <motion.div 
+              <motion.div
                 initial={{ scale: 0.9, y: 15 }}
                 animate={{ scale: 1, y: 0 }}
                 exit={{ scale: 0.9, y: 15 }}
@@ -752,7 +719,7 @@ export default function App() {
                       <HelpCircle className="w-3.5 h-3.5 text-yellow-400" />
                       <span>Tutorial</span>
                     </button>
-                    <button 
+                    <button
                       onClick={() => { playClickSound(); setIsOptionsOpen(false); }}
                       className="p-1.5 bg-slate-800 hover:bg-slate-750 border-2 border-slate-700 border-b-4 border-b-slate-950 rounded-xl shadow-[0_2px_0_#0f172a] text-slate-300 cursor-pointer active:translate-y-0.5 active:shadow-none"
                     >
@@ -772,9 +739,9 @@ export default function App() {
                       </span>
                       <span className="font-mono text-xs">{Math.round(volume * 100)}%</span>
                     </div>
-                    <input 
-                      type="range" 
-                      min="0" max="1" step="0.05" 
+                    <input
+                      type="range"
+                      min="0" max="1" step="0.05"
                       value={volume}
                       onChange={handleVolumeChange}
                       className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
@@ -799,15 +766,13 @@ export default function App() {
                       </div>
                       <button
                         onClick={() => updateGraphics('showFloatingTexts', !graphics.showFloatingTexts)}
-                        className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer border shrink-0 ${
-                          graphics.showFloatingTexts 
-                            ? 'bg-blue-600 border-blue-400' 
+                        className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer border shrink-0 ${graphics.showFloatingTexts
+                            ? 'bg-blue-600 border-blue-400'
                             : 'bg-slate-800 border-slate-700'
-                        }`}
+                          }`}
                       >
-                        <div className={`w-4 h-4 rounded-full bg-white transition-transform absolute top-0.5 ${
-                          graphics.showFloatingTexts ? 'right-1' : 'left-1'
-                        }`} />
+                        <div className={`w-4 h-4 rounded-full bg-white transition-transform absolute top-0.5 ${graphics.showFloatingTexts ? 'right-1' : 'left-1'
+                          }`} />
                       </button>
                     </div>
 
@@ -823,15 +788,13 @@ export default function App() {
                       </div>
                       <button
                         onClick={() => updateGraphics('showSpinningPreview', !graphics.showSpinningPreview)}
-                        className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer border shrink-0 ${
-                          graphics.showSpinningPreview 
-                            ? 'bg-emerald-600 border-emerald-400' 
+                        className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer border shrink-0 ${graphics.showSpinningPreview
+                            ? 'bg-emerald-600 border-emerald-400'
                             : 'bg-slate-800 border-slate-700'
-                        }`}
+                          }`}
                       >
-                        <div className={`w-4 h-4 rounded-full bg-white transition-transform absolute top-0.5 ${
-                          graphics.showSpinningPreview ? 'right-1' : 'left-1'
-                        }`} />
+                        <div className={`w-4 h-4 rounded-full bg-white transition-transform absolute top-0.5 ${graphics.showSpinningPreview ? 'right-1' : 'left-1'
+                          }`} />
                       </button>
                     </div>
 
@@ -847,15 +810,35 @@ export default function App() {
                       </div>
                       <button
                         onClick={() => updateGraphics('enableConfetti', !graphics.enableConfetti)}
-                        className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer border shrink-0 ${
-                          graphics.enableConfetti 
-                            ? 'bg-fuchsia-600 border-fuchsia-400' 
+                        className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer border shrink-0 ${graphics.enableConfetti
+                            ? 'bg-fuchsia-600 border-fuchsia-400'
                             : 'bg-slate-800 border-slate-700'
-                        }`}
+                          }`}
                       >
-                        <div className={`w-4 h-4 rounded-full bg-white transition-transform absolute top-0.5 ${
-                          graphics.enableConfetti ? 'right-1' : 'left-1'
-                        }`} />
+                        <div className={`w-4 h-4 rounded-full bg-white transition-transform absolute top-0.5 ${graphics.enableConfetti ? 'right-1' : 'left-1'
+                          }`} />
+                      </button>
+                    </div>
+
+                    {/* Toggle Dice Tumble/Rotation Animation */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                          <Dices className="w-3.5 h-3.5 text-blue-400" /> Animación de Giro 3D
+                        </span>
+                        <span className="text-[10px] text-slate-400 leading-tight">
+                          Rotación de dados al tirar en la mesa
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => updateGraphics('enableDiceRotationAnimation', !graphics.enableDiceRotationAnimation)}
+                        className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer border shrink-0 ${graphics.enableDiceRotationAnimation
+                            ? 'bg-blue-600 border-blue-400'
+                            : 'bg-slate-800 border-slate-700'
+                          }`}
+                      >
+                        <div className={`w-4 h-4 rounded-full bg-white transition-transform absolute top-0.5 ${graphics.enableDiceRotationAnimation ? 'right-1' : 'left-1'
+                          }`} />
                       </button>
                     </div>
                   </div>
@@ -881,7 +864,7 @@ export default function App() {
 
                   {/* Cheats Section ("Trucos") */}
                   {state.cheatsUnlocked && (
-                    <motion.div 
+                    <motion.div
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: 'auto' }}
                       className="bg-slate-950 p-3 sm:p-3.5 rounded-2xl border-2 border-purple-500/70 space-y-2 shadow-[0_0_20px_rgba(168,85,247,0.3)]"
@@ -967,7 +950,7 @@ export default function App() {
 
                   {/* Reset Button with Large Readable Typography */}
                   <div className="pt-1">
-                    <button 
+                    <button
                       onClick={() => { playClickSound(); setShowResetModal(true); }}
                       className="w-full py-2.5 sm:py-3 bg-red-950/50 hover:bg-red-900/70 text-red-300 border-2 border-red-800/70 border-b-4 border-b-red-950 shadow-[0_2px_0_#450a0a] rounded-xl font-bold font-pixel text-xs sm:text-sm uppercase tracking-wider transition-all active:translate-y-0.5 active:shadow-none cursor-pointer"
                     >
@@ -982,18 +965,18 @@ export default function App() {
 
         {/* Reset Confirmation Modal */}
         {showResetModal && (
-          <ResetModal 
-            onClose={() => setShowResetModal(false)} 
+          <ResetModal
+            onClose={() => setShowResetModal(false)}
             onConfirm={() => {
               hardReset();
               try {
                 localStorage.removeItem('pal_tutorial_completed');
-              } catch (e) {}
+              } catch (e) { }
               tutorialRollsCountRef.current = 0;
               setTutorialStep(1);
               setShowResetModal(false);
               setIsOptionsOpen(false);
-            }} 
+            }}
           />
         )}
       </div>

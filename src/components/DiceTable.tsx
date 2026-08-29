@@ -24,6 +24,7 @@ interface DiceTableProps {
   streakBonus?: number;
   showFloatingTexts?: boolean;
   enableConfetti?: boolean;
+  enableTumbleAnimation?: boolean;
 }
 
 const getComboColor = (tier: string) => {
@@ -66,6 +67,7 @@ export const DiceTable: React.FC<DiceTableProps> = ({
   streakBonus = 1,
   showFloatingTexts = true,
   enableConfetti = true,
+  enableTumbleAnimation = true,
 }) => {
   const [rollId, setRollId] = useState(0);
   const prevFaces = useRef(faces);
@@ -78,15 +80,45 @@ export const DiceTable: React.FC<DiceTableProps> = ({
   const rollTimesRef = useRef<number[]>([]);
   const lastRollTimeRef = useRef<number>(0);
 
-  const normalDiceCount = faces.length;
-  // Dynamic responsive die size for up to 10 regular dice
-  const dieSize = normalDiceCount >= 9 ? 42 : normalDiceCount >= 7 ? 48 : normalDiceCount >= 5 ? 54 : normalDiceCount >= 3 ? 64 : 76;
-  const gapSize = normalDiceCount >= 8 ? 'gap-1.5 sm:gap-2.5' : normalDiceCount >= 5 ? 'gap-2 sm:gap-3.5' : 'gap-3 sm:gap-6';
+  const totalDiceCount = faces.length + ghosts.length;
+  // Tamaño completo fijo para todos los dados (igual que cuando hay 3 o menos)
+  const dieSize = 96;
+  const rowGap = 'gap-2 sm:gap-3.5';
+  const colGap = 'gap-3 sm:gap-6';
 
   // Map each individual die to its matching cluster's unique color
   const comboColorMap = useMemo(() => {
     return getDiceComboColorMap(faces, sides);
   }, [faces, sides]);
+
+  // Combine regular dice and ghost dice into rows of up to 3
+  const diceRows = useMemo(() => {
+    const allDice: Array<{
+      id: string;
+      face: number;
+      isGhost: boolean;
+      comboColor?: string;
+    }> = [
+      ...faces.map((f, i) => ({
+        id: `die-r-${i}`,
+        face: f,
+        isGhost: false,
+        comboColor: comboColorMap[i]
+      })),
+      ...ghosts.map((g, i) => ({
+        id: `die-g-${i}`,
+        face: g,
+        isGhost: true,
+        comboColor: '#38bdf8'
+      }))
+    ];
+
+    const rows: typeof allDice[] = [];
+    for (let i = 0; i < allDice.length; i += 3) {
+      rows.push(allDice.slice(i, i + 3));
+    }
+    return rows;
+  }, [faces, ghosts, comboColorMap]);
 
   // Format rolls per second concisely
   const rpsValue = useMemo(() => {
@@ -169,7 +201,7 @@ export const DiceTable: React.FC<DiceTableProps> = ({
           }
         }
 
-        // Lightweight Floating Notification Particles (only if enabled by user)
+        // Lightweight Floating Notification Particles (Max 3, if enabled - Instant 100% Solid Opacity)
         if (showFloatingTexts) {
           const canSpawnParticles = now - lastParticleTimeRef.current > 80;
 
@@ -236,7 +268,7 @@ export const DiceTable: React.FC<DiceTableProps> = ({
 
   return (
     <div 
-      className="relative w-full flex-1 min-h-0 bg-gradient-to-b from-emerald-800 via-emerald-700 to-emerald-900 rounded-2xl sm:rounded-3xl shadow-[inset_0_10px_30px_rgba(0,0,0,0.6),0_6px_20px_rgba(0,0,0,0.5)] border-[6px] sm:border-[12px] border-amber-950 overflow-hidden cursor-pointer flex flex-col items-center justify-center select-none"
+      className="relative w-full flex-1 min-h-0 bg-gradient-to-b from-emerald-800 via-emerald-700 to-emerald-900 rounded-2xl sm:rounded-3xl shadow-[inset_0_10px_30px_rgba(0,0,0,0.6),0_6px_20px_rgba(0,0,0,0.5)] border-[6px] sm:border-[12px] border-amber-950 overflow-y-auto overflow-x-hidden cursor-pointer flex flex-col items-center justify-center select-none"
       onClick={() => {
         if (!cooldownActive) onRoll();
       }}
@@ -278,14 +310,14 @@ export const DiceTable: React.FC<DiceTableProps> = ({
           {particles.map(p => (
             <motion.div
               key={p.id}
-              initial={{ opacity: 1, x: p.x, y: p.y, scale: 1.15, rotate: p.rot }}
-              animate={{ opacity: 1, x: p.x, y: p.y - 25, scale: 1.0, rotate: p.rot }}
-              exit={{ opacity: 0, y: p.y - 50, scale: 0.9 }}
-              transition={{ duration: 0.25, ease: 'easeOut' }}
+              initial={{ opacity: 1, x: p.x, y: p.y, scale: 1.2, rotate: p.rot }}
+              animate={{ opacity: 1, x: p.x, y: p.y - 30, scale: 1.0, rotate: p.rot }}
+              exit={{ opacity: 0, y: p.y - 60, scale: 0.85 }}
+              transition={{ duration: 0.28, ease: 'easeOut' }}
               className={`absolute font-pixel font-black ${
-                p.type === 'combo' ? 'text-base sm:text-2xl z-30' : 'text-lg sm:text-3xl z-20'
+                p.type === 'combo' ? 'text-2xl sm:text-4xl z-30' : p.type === 'streak' ? 'text-xl sm:text-3xl z-20' : 'text-3xl sm:text-5xl z-20'
               } ${p.colorClass} pointer-events-none whitespace-nowrap transform-gpu will-change-transform`}
-              style={{ textShadow: '2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000' }}
+              style={{ textShadow: '2.5px 2.5px 0 #000, -2.5px -2.5px 0 #000, 2.5px -2.5px 0 #000, -2.5px 2.5px 0 #000, 0 4px 10px rgba(0,0,0,0.95)' }}
             >
               {p.text}
             </motion.div>
@@ -293,54 +325,36 @@ export const DiceTable: React.FC<DiceTableProps> = ({
         </AnimatePresence>
       )}
 
-      {/* Main Dice Pool Container (Up to 10 regular dice in responsive layout) */}
+      {/* Main Dice Pool Container (Organized in rows of up to 3 dice) */}
       <div 
-        className={`flex flex-wrap justify-center items-center ${gapSize} p-1.5 sm:p-4 w-full max-w-sm sm:max-w-md z-10`} 
+        className={`flex flex-col items-center justify-center ${rowGap} p-2 sm:p-4 w-full z-10`} 
       >
-        {faces.length === 0 && (
+        {totalDiceCount === 0 && (
           <div className="text-emerald-950/70 font-pixel text-lg sm:text-2xl text-center font-bold drop-shadow-sm select-none px-4">
             Toca la mesa o pulsa el botón para lanzar
           </div>
         )}
 
-        {faces.map((f, i) => {
-          const comboColor = comboColorMap[i];
-          return (
-            <VectorTrue3DDie
-              key={`die-r-${i}`}
-              finalFace={f}
-              sides={sides}
-              materialLevel={materialLevel}
-              rollId={rollId}
-              manualCooldown={manualCooldown}
-              animationSpeedMult={animationSpeedMult}
-              size={dieSize}
-              isGhost={false}
-              comboColor={comboColor}
-            />
-          );
-        })}
+        {diceRows.map((row, rIdx) => (
+          <div key={`dice-row-${rIdx}`} className={`flex items-center justify-center ${colGap}`}>
+            {row.map(die => (
+              <VectorTrue3DDie
+                key={die.id}
+                finalFace={die.face}
+                sides={sides}
+                materialLevel={materialLevel}
+                rollId={rollId}
+                manualCooldown={manualCooldown}
+                animationSpeedMult={animationSpeedMult}
+                size={dieSize}
+                isGhost={die.isGhost}
+                comboColor={die.comboColor}
+                enableTumbleAnimation={enableTumbleAnimation}
+              />
+            ))}
+          </div>
+        ))}
       </div>
-
-      {/* Dedicated Separate Ghost Die Section (Centered lower down without text badge) */}
-      {ghosts.length > 0 && (
-        <div className="flex items-center justify-center z-10 mt-1 sm:mt-2 gap-2">
-          {ghosts.map((g, i) => (
-            <VectorTrue3DDie
-              key={`die-g-${i}`}
-              finalFace={g}
-              sides={sides}
-              materialLevel={materialLevel}
-              rollId={rollId}
-              manualCooldown={manualCooldown}
-              animationSpeedMult={animationSpeedMult}
-              size={dieSize >= 60 ? 52 : dieSize}
-              isGhost={true}
-              comboColor="#38bdf8"
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 };

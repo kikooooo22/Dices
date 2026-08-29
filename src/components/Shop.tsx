@@ -13,7 +13,8 @@ import {
   getAutoRollsPerSec,
   getAnimationSpeedMult,
   getFlatBonus,
-  getComboMult
+  getComboMult,
+  getMilestoneRequiredUpgrades
 } from '../game/engine';
 import { GameState } from '../hooks/useGameState';
 import {
@@ -37,8 +38,6 @@ import confetti from 'canvas-confetti';
 interface ShopProps {
   state: GameState;
   onBuy: (id: UpgradeId) => void;
-  onBuyM1: () => void;
-  onBuyM2: () => void;
   onToggleAutoRoll: () => void;
   onUnlockCheats: () => void;
   isAutoRollPaused: boolean;
@@ -104,8 +103,8 @@ const CATEGORIES: CategoryConfig[] = [
     icon: Gift,
     activeClass: 'superstar-tab-active text-slate-950 font-black',
     inactiveClass: 'superstar-tab-inactive text-pink-200 font-bold',
-    cardAffordableClass: '',
-    badgeClass: ''
+    cardAffordableClass: 'bg-pink-950/60 hover:bg-pink-900/60 border-pink-400/80 border-b-4 border-b-pink-600 shadow-[0_4px_0_#831843] text-white',
+    badgeClass: 'bg-pink-900/80 text-pink-200 border-pink-500/50'
   },
 ];
 
@@ -118,8 +117,6 @@ const ODE_TO_JOY_SEQUENCE: (UpgradeCategory | 'milestones')[] = [
 export const Shop: React.FC<ShopProps> = ({
   state,
   onBuy,
-  onBuyM1,
-  onBuyM2,
   onToggleAutoRoll,
   onUnlockCheats,
   isAutoRollPaused,
@@ -136,12 +133,14 @@ export const Shop: React.FC<ShopProps> = ({
     }
   }, [tutorialStep]);
 
-  const m1Cost = 150000;
-  const m2Cost = 1000000000; // 1B for Secret 2
-
-  const totalUpgradesBought = Object.values(state.upgrades).reduce((sum, lvl) => sum + lvl, 0);
-  const isM1Locked = totalUpgradesBought < 15 && !state.milestone1Unlocked;
-  const isM2Locked = totalUpgradesBought < 50 && !state.milestone2Unlocked;
+  const currentSecretLevel = state.upgrades.cosmic_secret || 0;
+  const isSecretMax = currentSecretLevel >= UPGRADES.cosmic_secret.maxLevel;
+  const standardUpgradesBought = Object.entries(state.upgrades).reduce(
+    (sum, [id, lvl]) => id === 'cosmic_secret' ? sum : sum + lvl,
+    0
+  );
+  const requiredUpgradesForNextLevel = getMilestoneRequiredUpgrades(currentSecretLevel);
+  const isSecretLocked = !isSecretMax && standardUpgradesBought < requiredUpgradesForNextLevel;
 
   // Handle Tab Click & Musical Note Sequence Detection (Repeatable anytime)
   const handleTabClick = (cat: CategoryConfig) => {
@@ -207,6 +206,8 @@ export const Shop: React.FC<ShopProps> = ({
       }
       case 'combo_mult':
         return `Multiplicador de combos: x${getComboMult(level).toFixed(1)}${!isMax ? ` → x${getComboMult(level + 1).toFixed(1)}` : ''}`;
+      case 'cosmic_secret':
+        return `Nivel de misterio: Lvl ${level}${!isMax ? ` → Lvl ${level + 1}` : ''}`;
       default:
         return '';
     }
@@ -231,13 +232,12 @@ export const Shop: React.FC<ShopProps> = ({
           }
         }}
         disabled={isMax || !canAfford || isLockedByTutorial}
-        className={`w-full text-left p-3.5 sm:p-4 rounded-2xl border-2 transition-all flex flex-col mb-3 select-none box-border ${
-          isTutorialTarget ? 'ring-4 ring-yellow-400 ring-offset-2 ring-offset-slate-900 animate-pulse' : ''
-        } ${isLockedByTutorial ? 'opacity-40 cursor-not-allowed bg-slate-900 border-slate-800' : isMax
-          ? 'bg-slate-800/40 border-slate-700/50 border-b-4 border-b-slate-700/60 opacity-70 cursor-default'
-          : canAfford
-            ? `${currentTabConfig.cardAffordableClass} active:translate-y-0.5 active:border-b-2 active:shadow-none cursor-pointer`
-            : 'bg-slate-850 border-slate-700/80 border-b-4 border-b-slate-600 shadow-[0_3px_0_#334155] opacity-85 cursor-not-allowed'
+        className={`w-full text-left p-3.5 sm:p-4 rounded-2xl border-2 transition-all flex flex-col mb-3 select-none box-border ${isTutorialTarget ? 'ring-4 ring-yellow-400 ring-offset-2 ring-offset-slate-900 animate-pulse' : ''
+          } ${isLockedByTutorial ? 'opacity-40 cursor-not-allowed bg-slate-900 border-slate-800' : isMax
+            ? 'bg-slate-800/40 border-slate-700/50 border-b-4 border-b-slate-700/60 opacity-70 cursor-default'
+            : canAfford
+              ? `${currentTabConfig.cardAffordableClass} active:translate-y-0.5 active:border-b-2 active:shadow-none cursor-pointer`
+              : 'bg-slate-850 border-slate-700/80 border-b-4 border-b-slate-600 shadow-[0_3px_0_#334155] opacity-85 cursor-not-allowed'
           }`}
       >
         <div className="flex justify-between items-start w-full gap-2">
@@ -316,14 +316,13 @@ export const Shop: React.FC<ShopProps> = ({
           const Icon = cat.icon;
           const isActive = activeTab === cat.id;
 
-          const count = cat.id === 'milestones'
-            ? (!isM1Locked && state.points >= m1Cost ? 1 : 0) + (!isM2Locked && state.points >= m2Cost ? 1 : 0)
-            : Object.values(UPGRADES)
-              .filter(u => u.category === cat.id)
-              .filter(u => {
-                const lvl = state.upgrades[u.id] || 0;
-                return lvl < u.maxLevel && state.points >= getCost(u.id, lvl);
-              }).length;
+          const count = Object.values(UPGRADES)
+            .filter(u => u.category === cat.id)
+            .filter(u => {
+              if (u.category === 'milestones' && isSecretLocked) return false;
+              const lvl = state.upgrades[u.id] || 0;
+              return lvl < u.maxLevel && state.points >= getCost(u.id, lvl);
+            }).length;
 
           return (
             <button
@@ -355,111 +354,42 @@ export const Shop: React.FC<ShopProps> = ({
           </div>
         ) : (
           <div className="space-y-3.5">
-            {/* Secret Card 1 */}
-            <div className={`p-4 sm:p-5 rounded-2xl border-2 transition-all flex flex-col ${isM1Locked
-              ? 'bg-slate-950/80 border-slate-800 text-slate-400 opacity-70'
-              : state.points >= m1Cost
-                ? 'bg-gradient-to-br from-purple-950/80 to-pink-950/80 border-pink-400 border-b-4 border-b-pink-600 shadow-[0_4px_0_#831843] text-white'
-                : 'bg-slate-900 border-purple-900/60 border-b-4 border-b-slate-950 text-slate-400'
-              }`}>
-              <div className="flex justify-between items-start gap-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <Gift className={`w-5 h-5 ${isM1Locked ? 'text-slate-500' : 'text-pink-400'}`} />
-                    <h3 className="font-bold text-sm sm:text-base text-pink-200">
-                      {isM1Locked ? '(Bloqueado)' : '28 de Agosto'}
-                    </h3>
+            {isSecretLocked ? (
+              <div className="w-full p-4 sm:p-5 rounded-2xl border-2 bg-slate-950/80 border-slate-800 text-slate-400 opacity-85 select-none flex flex-col gap-2.5">
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-xl bg-pink-950/60 border border-pink-500/40 text-pink-300">
+                      <Lock className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-sm sm:text-base text-slate-200">
+                        Misterio Cósmico — Nivel {currentSecretLevel + 1}
+                      </h3>
+                      <span className="text-[10px] sm:text-xs font-mono text-pink-400 font-bold block">
+                        {currentSecretLevel > 0 
+                          ? `Nivel actual alcanzado: Lvl ${currentSecretLevel} / ${UPGRADES.cosmic_secret.maxLevel}` 
+                          : 'Aún no desbloqueado'}
+                      </span>
+                    </div>
                   </div>
-                  {isM1Locked ? (
-                    <p className="text-xs sm:text-sm mt-1 text-slate-300 font-bold">
-                      Desbloquea {Math.max(0, 15 - totalUpgradesBought)} mejoras más
-                    </p>
-                  ) : (
-                    <p className="text-xs sm:text-sm mt-1 text-slate-400 italic">
-                      ¿Qué es? ¿Qué es?
-                    </p>
-                  )}
+                  <span className="text-[10px] sm:text-xs font-mono font-bold px-2 py-0.5 rounded-md bg-slate-900 text-pink-300 border border-pink-900/60 shrink-0">
+                    {standardUpgradesBought} / {requiredUpgradesForNextLevel} Mejoras
+                  </span>
                 </div>
-                {!isM1Locked && (
-                  <div className="text-right">
-                    <span className={`font-pixel text-base sm:text-lg font-bold ${state.points >= m1Cost ? 'text-yellow-300' : 'text-slate-500'}`}>
-                      {formatNumber(m1Cost)} pts
-                    </span>
-                  </div>
-                )}
+                <p className="text-xs sm:text-sm text-slate-300 font-sans">
+                  Compra <strong className="text-pink-300 font-mono">{requiredUpgradesForNextLevel - standardUpgradesBought} mejoras más</strong> en las otras pestañas para desbloquear el Nivel {currentSecretLevel + 1}.
+                </p>
+                {/* Progress bar */}
+                <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800 mt-1">
+                  <div 
+                    className="bg-gradient-to-r from-purple-600 to-pink-500 h-full rounded-full transition-all duration-300"
+                    style={{ width: `${Math.min(100, (standardUpgradesBought / requiredUpgradesForNextLevel) * 100)}%` }}
+                  />
+                </div>
               </div>
-
-              {!isM1Locked && (
-                <div className="mt-3 pt-3 border-t border-pink-900/40 flex justify-end">
-                  <button
-                    onClick={() => {
-                      playBuySound();
-                      onBuyM1();
-                    }}
-                    disabled={state.points < m1Cost && !state.milestone1Unlocked}
-                    className={`px-4 py-1.5 rounded-xl font-bold text-xs sm:text-sm transition-all border-2 ${state.milestone1Unlocked
-                      ? 'bg-pink-600 text-white border-pink-400 border-b-4 border-b-pink-800 cursor-pointer shadow-[0_2px_0_#831843]'
-                      : state.points >= m1Cost
-                        ? 'bg-pink-600 hover:bg-pink-500 text-white border-pink-400 border-b-4 border-b-pink-800 cursor-pointer shadow-[0_2px_0_#831843] active:translate-y-0.5 active:border-b-2 active:shadow-none'
-                        : 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'
-                      }`}
-                  >
-                    {state.milestone1Unlocked ? 'Ver de nuevo' : 'Comprar Secreto'}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Secret Card 2 */}
-            <div className={`p-4 sm:p-5 rounded-2xl border-2 transition-all flex flex-col ${isM2Locked
-              ? 'bg-slate-950/80 border-slate-800 text-slate-400 opacity-70'
-              : state.points >= m2Cost
-                ? 'bg-gradient-to-br from-indigo-950/90 to-purple-950/90 border-cyan-400 border-b-4 border-b-cyan-600 shadow-[0_4px_0_#0e7490] text-white'
-                : 'bg-slate-900 border-cyan-900/60 border-b-4 border-b-slate-950 text-slate-400'
-              }`}>
-              <div className="flex justify-between items-start gap-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <HelpCircle className={`w-5 h-5 ${isM2Locked ? 'text-slate-500' : 'text-cyan-400'}`} />
-                    <h3 className="font-bold text-sm sm:text-base text-cyan-200">
-                      {isM2Locked ? '(Bloqueado)' : '???'}
-                    </h3>
-                  </div>
-                  {isM2Locked && (
-                    <p className="text-xs sm:text-sm mt-1 text-slate-300 font-bold">
-                      Desbloquea {Math.max(0, 50 - totalUpgradesBought)} mejoras más
-                    </p>
-                  )}
-                </div>
-                {!isM2Locked && (
-                  <div className="text-right">
-                    <span className={`font-pixel text-base sm:text-lg font-bold ${state.points >= m2Cost ? 'text-yellow-300' : 'text-slate-500'}`}>
-                      {formatNumber(m2Cost)} pts
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {!isM2Locked && (
-                <div className="mt-3 pt-3 border-t border-cyan-900/40 flex justify-end">
-                  <button
-                    onClick={() => {
-                      playBuySound();
-                      onBuyM2();
-                    }}
-                    disabled={state.points < m2Cost && !state.milestone2Unlocked}
-                    className={`px-4 py-1.5 rounded-xl font-bold text-xs sm:text-sm transition-all border-2 ${state.milestone2Unlocked
-                      ? 'bg-cyan-600 text-white border-cyan-400 border-b-4 border-b-cyan-800 cursor-pointer shadow-[0_2px_0_#0891b2]'
-                      : state.points >= m2Cost
-                        ? 'bg-cyan-600 hover:bg-cyan-500 text-white border-cyan-400 border-b-4 border-b-cyan-800 cursor-pointer shadow-[0_2px_0_#0891b2] active:translate-y-0.5 active:border-b-2 active:shadow-none'
-                        : 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'
-                      }`}
-                  >
-                    {state.milestone2Unlocked ? 'Ver de nuevo' : 'Comprar Secreto'}
-                  </button>
-                </div>
-              )}
-            </div>
+            ) : (
+              renderUpgradeCard(UPGRADES.cosmic_secret)
+            )}
           </div>
         )}
       </div>
