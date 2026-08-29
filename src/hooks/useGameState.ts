@@ -59,6 +59,7 @@ export const INITIAL_STATE: GameState = {
     ghost_dice: 0,
     combo_mult: 0,
     hold_to_roll: 0,
+    cosmic_secret: 0,
   },
   globalMult: 1,
   milestone1Unlocked: false,

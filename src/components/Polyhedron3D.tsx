@@ -195,10 +195,10 @@ export const getMaterialStyle = (
         baseColor: '#94a3b8',
         strokeColor: '#f8fafc',
         strokeWidth: 1.8,
-        textColor: '#09090b',
-        glowFilter: 'drop-shadow(0 3px 5px rgba(0,0,0,0.5))',
+        textColor: '#ffffff', // Blanco puro de alto contraste para máxima visibilidad en metal
+        glowFilter: 'drop-shadow(0 3px 5px rgba(0,0,0,0.6))',
         getFaceFill: (intensity) => {
-          const v = Math.round(110 + intensity * 140);
+          const v = Math.round(90 + intensity * 135);
           return `rgb(${v}, ${Math.round(v * 1.02)}, ${Math.round(v * 1.05)})`;
         }
       };
@@ -208,7 +208,7 @@ export const getMaterialStyle = (
         baseColor: '#0284c7',
         strokeColor: '#bae6fd',
         strokeWidth: 2.0,
-        textColor: '#082f49',
+        textColor: '#ffffff', // Blanco puro de alto contraste
         glowFilter: 'drop-shadow(0 3px 5px rgba(0,0,0,0.5))',
         getFaceFill: (intensity) => `rgba(56, 189, 248, ${0.45 + intensity * 0.45})`
       };
@@ -436,8 +436,8 @@ export const PolyhedronDie: React.FC<PolyhedronDieProps> = ({
             top: `${bestFaceCentroid[1]}px`,
             transform: 'translate(-50%, -50%)',
             color: comboColor ? '#ffffff' : matStyle.textColor,
-            fontSize: size >= 70 ? (sides >= 12 ? '20px' : '26px') : (sides >= 12 ? '13px' : '16px'),
-            textShadow: '1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000'
+            fontSize: size >= 85 ? (sides >= 12 ? '28px' : '36px') : size >= 70 ? (sides >= 12 ? '22px' : '28px') : size >= 55 ? (sides >= 12 ? '18px' : '23px') : (sides >= 12 ? '15px' : '18px'),
+            textShadow: '2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 0 3px 6px rgba(0,0,0,0.95)'
           }}
         >
           {displayValue}
@@ -494,7 +494,7 @@ export const VectorSpinningDiePreview = React.memo(({
   );
 });
 
-// Interactive 3D Table Rolling Die with high-speed turbo optimization
+// Interactive 3D Table Rolling Die with customizable tumble animation
 export const VectorTrue3DDie = React.memo(({
   finalFace,
   sides,
@@ -504,7 +504,8 @@ export const VectorTrue3DDie = React.memo(({
   animationSpeedMult = 1,
   size,
   isGhost = false,
-  comboColor
+  comboColor,
+  enableTumbleAnimation = true
 }: {
   finalFace: number;
   sides: number;
@@ -515,6 +516,7 @@ export const VectorTrue3DDie = React.memo(({
   size?: number;
   isGhost?: boolean;
   comboColor?: string;
+  enableTumbleAnimation?: boolean;
 }) => {
   // Resting 3D isometric angles for each dice polyhedron
   const defaultRot = useMemo(() => {
@@ -531,21 +533,18 @@ export const VectorTrue3DDie = React.memo(({
   const [rot, setRot] = useState<{ x: number; y: number; z: number }>(defaultRot);
   const [isRolling, setIsRolling] = useState(false);
 
-  // If cooldown is faster than 0.28s (or high speed), disable continuous tumble loop for ultra-high FPS
-  const isHighSpeedMode = (manualCooldown / animationSpeedMult) < 0.28;
-
   useEffect(() => {
     if (rollId === 0) return;
 
-    if (isHighSpeedMode) {
-      // In high-speed mode, keep die static at resting angle, immediate face update
+    if (!enableTumbleAnimation) {
+      // In static mode, keep die at resting angle with immediate face update
       setRot(defaultRot);
       setIsRolling(false);
       return;
     }
 
     setIsRolling(true);
-    const duration = Math.max(100, (manualCooldown * 600) / animationSpeedMult);
+    const duration = Math.max(50, Math.min(500, (manualCooldown * 600) / animationSpeedMult));
     const startTime = performance.now();
 
     // Random initial tumbling velocities
@@ -574,7 +573,7 @@ export const VectorTrue3DDie = React.memo(({
 
     reqId = requestAnimationFrame(animateTumble);
     return () => cancelAnimationFrame(reqId);
-  }, [rollId, sides, manualCooldown, animationSpeedMult, isHighSpeedMode, defaultRot]);
+  }, [rollId, sides, manualCooldown, animationSpeedMult, enableTumbleAnimation, defaultRot]);
 
   const activeColor = isRolling ? undefined : comboColor;
 
