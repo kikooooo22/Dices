@@ -47,19 +47,24 @@ const POLYHEDRA_GEOMETRY: Record<number, MeshData> = {
     ]
   },
 
-  // D10: Pentagonal Trapezohedron (10 Kite Faces)
+  // D10: Pentagonal Trapezohedron
   10: (() => {
-    const topApex: Vector3 = [0, 0, 1.42];
-    const bottomApex: Vector3 = [0, 0, -1.42];
+    // Mathematically perfect fair D10 proportions
+    // h = H * (1 - cos(36°)) / (1 + cos(36°)) ~= H * 0.10557
+    const H = 1.45;
+    const R = 1.05;
+    const h = H * 0.1055728; 
+    
+    const topApex: Vector3 = [0, 0, H];
+    const bottomApex: Vector3 = [0, 0, -H];
     const upperRing: Vector3[] = [];
     const lowerRing: Vector3[] = [];
-    const r = 1.1;
 
     for (let i = 0; i < 5; i++) {
       const a1 = (i * 2 * Math.PI) / 5 - Math.PI / 2;
-      upperRing.push([r * Math.cos(a1), r * Math.sin(a1), 0.35]);
+      upperRing.push([R * Math.cos(a1), R * Math.sin(a1), h]);
       const a2 = ((i + 0.5) * 2 * Math.PI) / 5 - Math.PI / 2;
-      lowerRing.push([r * Math.cos(a2), r * Math.sin(a2), -0.35]);
+      lowerRing.push([R * Math.cos(a2), R * Math.sin(a2), -h]);
     }
 
     const verts: Vector3[] = [topApex, ...upperRing, ...lowerRing, bottomApex];
@@ -334,21 +339,14 @@ export const PolyhedronDie: React.FC<PolyhedronDieProps> = ({
     let frontmostCentroid: [number, number] = [cx, cy];
 
     mesh.faces.forEach((faceVertIndices, fIdx) => {
-      const v0 = transformed[faceVertIndices[0]];
-      const v1 = transformed[faceVertIndices[1]];
-      const v2 = transformed[faceVertIndices[2]];
-
-      // Normal vector via cross product (v1 - v0) x (v2 - v0)
-      const ax = v1[0] - v0[0];
-      const ay = v1[1] - v0[1];
-      const az = v1[2] - v0[2];
-      const bx = v2[0] - v0[0];
-      const by = v2[1] - v0[1];
-      const bz = v2[2] - v0[2];
-
-      const nx = ay * bz - az * by;
-      const ny = az * bx - ax * bz;
-      const nz = ax * by - ay * bx;
+      let nx = 0, ny = 0, nz = 0;
+      for (let i = 0; i < faceVertIndices.length; i++) {
+        const curr = transformed[faceVertIndices[i]];
+        const next = transformed[faceVertIndices[(i + 1) % faceVertIndices.length]];
+        nx += (curr[1] - next[1]) * (curr[2] + next[2]);
+        ny += (curr[2] - next[2]) * (curr[0] + next[0]);
+        nz += (curr[0] - next[0]) * (curr[1] + next[1]);
+      }
 
       const normLen = Math.sqrt(nx * nx + ny * ny + nz * nz);
       if (normLen < 1e-6) return;
@@ -357,8 +355,8 @@ export const PolyhedronDie: React.FC<PolyhedronDieProps> = ({
       const uny = ny / normLen;
       const unz = nz / normLen;
 
-      // Backface culling: unz >= -0.005 ensures complete silhouette without edge gaps
-      if (unz >= -0.005) {
+      // Backface culling: unz >= -0.05 ensures complete silhouette without edge gaps or flickering
+      if (unz >= -0.05) {
         // Compute lighting (diffuse dot product with light source)
         const dot = unx * lightVec[0] + uny * lightVec[1] + unz * lightVec[2];
         const intensity = Math.max(0.18, Math.min(1.0, 0.45 + dot * 0.55));
@@ -471,7 +469,7 @@ export const VectorSpinningDiePreview = React.memo(({
       if (now - lastUpdate > 32) {
         lastUpdate = now;
         const elapsed = (now - start) / 1000;
-        setAngle((elapsed * 40) % 360);
+        setAngle(elapsed * 40);
       }
       animFrame = requestAnimationFrame(loop);
     };
@@ -484,7 +482,7 @@ export const VectorSpinningDiePreview = React.memo(({
     <div className="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center shrink-0">
       <PolyhedronDie
         sides={sides}
-        size={42}
+        size={38}
         rotX={24}
         rotY={angle}
         rotZ={angle * 0.4}

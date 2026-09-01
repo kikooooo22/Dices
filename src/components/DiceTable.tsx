@@ -25,6 +25,7 @@ interface DiceTableProps {
   showFloatingTexts?: boolean;
   enableConfetti?: boolean;
   enableTumbleAnimation?: boolean;
+  rollId: number;
 }
 
 const getComboColor = (tier: string) => {
@@ -68,9 +69,9 @@ export const DiceTable: React.FC<DiceTableProps> = ({
   showFloatingTexts = true,
   enableConfetti = true,
   enableTumbleAnimation = true,
+  rollId,
 }) => {
-  const [rollId, setRollId] = useState(0);
-  const prevFaces = useRef(faces);
+  const prevRollId = useRef(0);
   const [particles, setParticles] = useState<Particle[]>([]);
   const lastConfettiTimeRef = useRef(0);
   const lastParticleTimeRef = useRef(0);
@@ -121,12 +122,12 @@ export const DiceTable: React.FC<DiceTableProps> = ({
   }, [faces, ghosts, comboColorMap]);
 
   // Format rolls per second concisely
-  const rpsValue = useMemo(() => {
+  const rpsData = useMemo(() => {
     if (rps <= 0.1) return null;
-    if (rps >= 100) return formatNumber(Math.round(rps));
-    if (rps >= 10) return rps.toFixed(1);
-    if (rps >= 1) return rps.toFixed(1);
-    return rps.toFixed(2);
+    if (rps >= 100) return { value: formatNumber(Math.round(rps)), isInverse: false };
+    if (rps >= 10) return { value: rps.toFixed(1), isInverse: false };
+    if (rps >= 1) return { value: rps.toFixed(1), isInverse: false };
+    return { value: (1 / rps).toFixed(1), isInverse: true };
   }, [rps]);
 
   // Periodic decay timer: if no roll occurred for > 4s, clear speed capsule
@@ -142,7 +143,7 @@ export const DiceTable: React.FC<DiceTableProps> = ({
   }, []);
 
   useEffect(() => {
-    if (faces !== prevFaces.current && faces.length > 0) {
+    if (rollId !== prevRollId.current && faces.length > 0) {
       const now = Date.now();
       const prevTime = lastRollTimeRef.current;
       lastRollTimeRef.current = now;
@@ -170,9 +171,8 @@ export const DiceTable: React.FC<DiceTableProps> = ({
         }
       }
 
-      const newRollId = rollId + 1;
-      setRollId(newRollId);
-      prevFaces.current = faces;
+      const newRollId = rollId;
+      prevRollId.current = rollId;
 
       if (totalEarned && totalEarned > 0) {
         const now = Date.now();
@@ -249,7 +249,7 @@ export const DiceTable: React.FC<DiceTableProps> = ({
                 type: 'streak',
                 text: `🔥 Racha x${comboStreak} (+${((streakBonus - 1) * 100).toFixed(0)}%)`,
                 x: (Math.random() - 0.5) * 40,
-                y: 75 + (Math.random() - 0.5) * 8,
+                y: 115 + (Math.random() - 0.5) * 8,
                 rot: (Math.random() - 0.5) * 8,
                 colorClass: 'text-orange-400 drop-shadow-[0_0_12px_#fb923c]',
               });
@@ -259,7 +259,7 @@ export const DiceTable: React.FC<DiceTableProps> = ({
             setParticles(prev => [...prev.slice(-1), ...newParticles].slice(-3));
             setTimeout(() => {
               setParticles(prev => prev.filter(p => !newParticles.find(np => np.id === p.id)));
-            }, 700);
+            }, 3000);
           }
         }
       }
@@ -269,6 +269,7 @@ export const DiceTable: React.FC<DiceTableProps> = ({
   return (
     <div 
       className="relative w-full flex-1 min-h-0 bg-gradient-to-b from-emerald-800 via-emerald-700 to-emerald-900 rounded-2xl sm:rounded-3xl shadow-[inset_0_10px_30px_rgba(0,0,0,0.6),0_6px_20px_rgba(0,0,0,0.5)] border-[6px] sm:border-[12px] border-amber-950 overflow-y-auto overflow-x-hidden cursor-pointer flex flex-col items-center justify-center select-none"
+      style={{ touchAction: 'none' }}
       onClick={() => {
         if (!cooldownActive) onRoll();
       }}
@@ -277,18 +278,25 @@ export const DiceTable: React.FC<DiceTableProps> = ({
       <div className="absolute inset-0 pointer-events-none opacity-25 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-emerald-400/20 via-transparent to-black/40" />
 
       {/* Rolls Per Second Speed Badge: X 🎲/s (Top Left of Table Felt) */}
-      {rpsValue && (
+      {rpsData && (
         <div 
           className="absolute top-2.5 left-2.5 sm:top-4 sm:left-4 bg-cyan-950/85 border border-cyan-500/70 text-cyan-300 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full flex items-center gap-1 shadow-lg backdrop-blur-sm z-20 select-none animate-fadeIn"
-          title={`Velocidad: ${rpsValue} dados/seg`}
+          title={`Velocidad: ${rpsData.value} ${rpsData.isInverse ? 'segundos/dado' : 'dados/seg'}`}
         >
           <span className="font-pixel text-xs sm:text-base font-bold tracking-wide">
-            {rpsValue}
+            {rpsData.value}
           </span>
-          <Dices className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-300 shrink-0" />
-          <span className="font-pixel text-xs sm:text-base font-bold tracking-wide">
-            /s
-          </span>
+          {rpsData.isInverse ? (
+            <>
+              <span className="font-pixel text-xs sm:text-base font-bold tracking-wide">s/</span>
+              <Dices className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-300 shrink-0" />
+            </>
+          ) : (
+            <>
+              <Dices className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-300 shrink-0" />
+              <span className="font-pixel text-xs sm:text-base font-bold tracking-wide">/s</span>
+            </>
+          )}
         </div>
       )}
 
@@ -311,9 +319,9 @@ export const DiceTable: React.FC<DiceTableProps> = ({
             <motion.div
               key={p.id}
               initial={{ opacity: 1, x: p.x, y: p.y, scale: 1.2, rotate: p.rot }}
-              animate={{ opacity: 1, x: p.x, y: p.y - 30, scale: 1.0, rotate: p.rot }}
-              exit={{ opacity: 0, y: p.y - 60, scale: 0.85 }}
-              transition={{ duration: 0.28, ease: 'easeOut' }}
+              animate={{ opacity: 1, x: p.x, y: p.y - 80, scale: 1.0, rotate: p.rot }}
+              exit={{ opacity: 0, scale: 0.85, transition: { duration: 0.2 } }}
+              transition={{ duration: 3.0, ease: 'easeOut' }}
               className={`absolute font-pixel font-black ${
                 p.type === 'combo' ? 'text-2xl sm:text-4xl z-30' : p.type === 'streak' ? 'text-xl sm:text-3xl z-20' : 'text-3xl sm:text-5xl z-20'
               } ${p.colorClass} pointer-events-none whitespace-nowrap transform-gpu will-change-transform`}
