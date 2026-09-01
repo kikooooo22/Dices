@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useGameState } from './hooks/useGameState';
 import { DiceTable, SpinningDiePreview } from './components/DiceTable';
 import { PolyhedronDie } from './components/Polyhedron3D';
@@ -95,7 +95,7 @@ const AutoRollIndicator = ({
       title={`Auto-Roller: ${rollsPerSec.toFixed(2)} tiros/seg (${isPaused ? 'Pausado - Clic para reanudar' : 'Activo - Clic para pausar'})`}
     >
       <span className="text-[10px] sm:text-xs font-pixel font-bold text-blue-400 z-10">
-        {rollsPerSec >= 1 ? `${rollsPerSec.toFixed(1)}/s` : `1/${(1 / rollsPerSec).toFixed(1)}s`}
+        {rollsPerSec >= 1 ? `${rollsPerSec.toFixed(1)}/s` : `${(1 / rollsPerSec).toFixed(1)}s`}
       </span>
 
       {!isPaused && (
@@ -110,7 +110,7 @@ const AutoRollIndicator = ({
             strokeWidth="28"
             strokeDasharray={circumference}
             animate={{ strokeDashoffset: [circumference, 0] }}
-            transition={{ duration: Math.max(0.1, duration), ease: "linear", repeat: Infinity }}
+            transition={{ duration: duration, ease: "linear", repeat: Infinity }}
           />
         </svg>
       )}
@@ -217,18 +217,18 @@ export default function App() {
   const progressReqRef = useRef<number | null>(null);
   const lastRollTimeRef = useRef(0);
 
-  const standardUpgradesBought = Object.entries(state.upgrades).reduce(
+  const standardUpgradesBought = useMemo(() => Object.entries(state.upgrades).reduce(
     (sum, [id, lvl]) => id === 'cosmic_secret' ? sum : sum + lvl,
     0
-  );
+  ), [state.upgrades]);
   const currentSecretLvl = state.upgrades.cosmic_secret || 0;
-  const isSecretLocked = currentSecretLvl < UPGRADES.cosmic_secret.maxLevel && standardUpgradesBought < getMilestoneRequiredUpgrades(currentSecretLvl);
+  const isSecretLocked = useMemo(() => currentSecretLvl < UPGRADES.cosmic_secret.maxLevel && standardUpgradesBought < getMilestoneRequiredUpgrades(currentSecretLvl), [currentSecretLvl, standardUpgradesBought]);
 
-  const affordableCount = Object.values(UPGRADES).filter(def => {
+  const affordableCount = useMemo(() => Object.values(UPGRADES).filter(def => {
     if (def.category === 'milestones' && isSecretLocked) return false;
     const currentLevel = state.upgrades[def.id] || 0;
     return currentLevel < def.maxLevel && state.points >= getCost(def.id, currentLevel);
-  }).length;
+  }).length, [state.upgrades, state.points, isSecretLocked]);
 
   const sides = getDiceSides(state.upgrades.dice_sides);
   const materialTier = state.upgrades.material_tier;
@@ -548,6 +548,7 @@ export default function App() {
             showFloatingTexts={graphics.showFloatingTexts}
             enableConfetti={graphics.enableConfetti}
             enableTumbleAnimation={graphics.enableDiceRotationAnimation}
+            rollId={lastRoll?.id || 0}
           />
         </main>
 
@@ -601,24 +602,22 @@ export default function App() {
               }`}
           >
             {/* Recharge Energy Bar */}
-            {cooldownActive && (
-              <div
-                className="absolute inset-0 bg-gradient-to-r from-emerald-600/40 via-teal-500/50 to-emerald-400/40 pointer-events-none"
-                style={{
-                  width: `${(1 - cooldownFraction) * 100}%`,
-                }}
-              />
-            )}
+            <div
+              className="absolute inset-0 bg-gradient-to-r from-emerald-600/40 via-teal-500/50 to-emerald-400/40 pointer-events-none transition-opacity"
+              style={{
+                opacity: cooldownActive ? 1 : 0,
+                width: `${(1 - cooldownFraction) * 100}%`,
+              }}
+            />
 
             {/* Dark Mask on Uncharged Portion */}
-            {cooldownActive && (
-              <div
-                className="absolute top-0 bottom-0 right-0 bg-black/45 pointer-events-none"
-                style={{
-                  width: `${cooldownFraction * 100}%`,
-                }}
-              />
-            )}
+            <div
+              className="absolute top-0 bottom-0 right-0 bg-black/45 pointer-events-none transition-opacity"
+              style={{
+                opacity: cooldownActive ? 1 : 0,
+                width: `${cooldownFraction * 100}%`,
+              }}
+            />
 
             <span className="relative z-10 font-pixel drop-shadow-md flex items-center justify-center">
               ¡TIRAR DADOS!

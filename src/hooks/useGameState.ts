@@ -17,6 +17,7 @@ import {
 } from '../game/engine';
 
 export interface LastRollData {
+  id: number;
   faces: number[];
   ghosts: number[];
   baseSum: number;
@@ -100,14 +101,34 @@ export const useGameState = (isGlobalPaused: boolean = false) => {
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  // Persist state
+  // Persist state in background (throttled) to prevent massive FPS drops on high roll speeds
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (e) {
-      console.warn('LocalStorage save failed:', e);
-    }
-  }, [state]);
+    let lastSavedString = '';
+    const saveState = () => {
+      try {
+        const stateStr = JSON.stringify(stateRef.current);
+        if (stateStr !== lastSavedString) {
+          localStorage.setItem(STORAGE_KEY, stateStr);
+          lastSavedString = stateStr;
+        }
+      } catch (e) {
+        console.warn('LocalStorage save failed:', e);
+      }
+    };
+
+    // Save automatically every 2 seconds
+    const intervalId = setInterval(saveState, 2000);
+
+    // Also attempt to save when user closes the tab
+    const handleBeforeUnload = () => saveState();
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      saveState();
+    };
+  }, []);
 
   const buyUpgrade = useCallback((id: UpgradeId) => {
     setState(prev => {
@@ -267,10 +288,12 @@ export const useGameState = (isGlobalPaused: boolean = false) => {
     // Streaks mechanic: consecutive combo rolls accumulate +0.5x
     const newStreak = hasCombo ? current.comboStreak + 1 : 0;
     const streakBonus = newStreak > 1 ? 1 + (newStreak - 1) * 0.5 : 1;
+    const newRollId = current.totalRolls + 1;
 
     const totalEarned = Math.round(baseSum * matMult * totalComboMult * streakBonus * current.globalMult);
 
     const rollData: LastRollData = {
+      id: newRollId,
       faces,
       ghosts,
       baseSum,
