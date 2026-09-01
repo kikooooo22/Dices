@@ -33,8 +33,8 @@ export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
     name: 'Más Dados',
     desc: 'Tira un dado adicional por tirada.',
     category: 'dice',
-    baseCost: 500,
-    growth: 3.8,
+    baseCost: 400,
+    growth: 3.2,
     maxLevel: 9 // 1 + 9 = 10 dados en total
   },
   dice_sides: {
@@ -43,7 +43,7 @@ export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
     desc: 'Aumenta las caras de los dados para obtener números más altos en cada tirada.',
     category: 'dice',
     baseCost: 1200,
-    growth: 4.5,
+    growth: 4.2,
     maxLevel: 4
   },
   material_tier: {
@@ -51,8 +51,8 @@ export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
     name: 'Calidad de Material',
     desc: 'Multiplica los puntos de cada tirada según la calidad del material de los dados.',
     category: 'dice',
-    baseCost: 2500,
-    growth: 5.8,
+    baseCost: 2000,
+    growth: 4.8,
     maxLevel: 5
   },
 
@@ -63,8 +63,8 @@ export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
     desc: 'Reduce drásticamente el tiempo de tirada manual de los dados.',
     category: 'automation',
     baseCost: 50,
-    growth: 1.55,
-    maxLevel: 40 // Velocidad extrema absurda para el endgame
+    growth: 1.75,
+    maxLevel: 20
   },
   auto_roller: {
     id: 'auto_roller',
@@ -72,8 +72,8 @@ export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
     desc: 'Tira los dados automáticamente de forma pasiva y constante.',
     category: 'automation',
     baseCost: 350,
-    growth: 1.75,
-    maxLevel: 20
+    growth: 1.85,
+    maxLevel: 15
   },
   cushioned_surface: {
     id: 'cushioned_surface',
@@ -81,7 +81,7 @@ export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
     desc: 'Acelera la animación de los dados para que las tiradas se resuelvan más rápido.',
     category: 'automation',
     baseCost: 200,
-    growth: 1.7,
+    growth: 1.85,
     maxLevel: 10
   },
   hold_to_roll: {
@@ -100,9 +100,9 @@ export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
     name: 'Caras Trucadas',
     desc: 'Añade puntos base adicionales a cada dado antes de multiplicar.',
     category: 'probability',
-    baseCost: 150,
-    growth: 1.65,
-    maxLevel: 20
+    baseCost: 120,
+    growth: 1.75,
+    maxLevel: 15
   },
   less_is_more: {
     id: 'less_is_more',
@@ -110,7 +110,7 @@ export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
     desc: 'Probabilidad de convertir los resultados de 1 en el valor más alto del dado.',
     category: 'probability',
     baseCost: 1500,
-    growth: 3.2,
+    growth: 3.0,
     maxLevel: 5
   },
   table_magnetism: {
@@ -119,7 +119,7 @@ export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
     desc: 'Aumenta la probabilidad de que caigan números repetidos para armar combos.',
     category: 'probability',
     baseCost: 800,
-    growth: 3.0,
+    growth: 2.8,
     maxLevel: 5
   },
   ghost_dice: {
@@ -127,8 +127,8 @@ export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
     name: 'Dado Fantasma',
     desc: 'Probabilidad de invocar un dado fantasma que suma puntos extra en cada tiro.',
     category: 'probability',
-    baseCost: 4000,
-    growth: 3.8,
+    baseCost: 3500,
+    growth: 3.5,
     maxLevel: 5
   },
 
@@ -138,19 +138,19 @@ export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
     name: 'Multiplicador de Combos',
     desc: 'Aumenta el multiplicador de puntos de todas las combinaciones y combos de dados.',
     category: 'combos',
-    baseCost: 600,
-    growth: 1.6,
-    maxLevel: 20
+    baseCost: 500,
+    growth: 1.8,
+    maxLevel: 15
   },
 
-  // 5. Secretos y Especiales
+  // 5. Objetos Especiales
   cosmic_secret: {
     id: 'cosmic_secret',
     name: 'Misterio Cósmico',
     desc: 'Un antiguo secreto enigmático. (Efecto en desarrollo para futuras actualizaciones)',
     category: 'milestones',
-    baseCost: 25000,
-    growth: 3.2,
+    baseCost: 50000,
+    growth: 3.5,
     maxLevel: 5
   },
 };
@@ -162,7 +162,7 @@ export const getCost = (id: UpgradeId, currentLevel: number): number => {
 };
 
 export const getMilestoneRequiredUpgrades = (currentLevel: number): number => {
-  // Cantidad acumulada de mejoras estándar necesarias para desbloquear cada nivel de Secreto:
+  // Cantidad acumulada de mejoras estándar necesarias para desbloquear cada nivel Especial:
   // Lvl 0 -> 1: 10
   // Lvl 1 -> 2: 18 (+8)
   // Lvl 2 -> 3: 28 (+10)
@@ -185,18 +185,17 @@ export const getMaterialTierName = (level: number): string => {
 };
 
 export const getMaterialMult = (level: number): number => {
-  const mults = [1, 1.5, 2.5, 4.0, 7.0, 12.0];
+  const mults = [1, 1.4, 2.0, 3.0, 4.5, 6.5];
   return mults[Math.min(level, mults.length - 1)] || 1;
 };
 
 export const getManualCooldown = (level: number): number => {
-  // Ultra absurd endgame speed: reaching up to ~60+ rolls/second
-  return Math.max(0.016, 1.0 * Math.pow(0.89, level));
+  return Math.max(0.06, 1.0 * Math.pow(0.87, level));
 };
 
 export const getAutoRollsPerSec = (level: number): number => {
   if (level === 0) return 0;
-  return 0.3 * level + 0.03 * Math.pow(level, 1.8);
+  return Number((0.15 * level + 0.015 * Math.pow(level, 1.6)).toFixed(2));
 };
 
 export const getAnimationSpeedMult = (level: number): number => {
@@ -251,34 +250,34 @@ export const evaluateCombos = (faces: number[], sides: number): ComboResult[] =>
 
   // 1. Primary Poker Hand Evaluation (from Pairs to 10 of a kind)
   if (sortedCounts[0] >= 10) {
-    combos.push({ name: '¡DECETO DIVINO (10)!', mult: 500.0, tier: 'cosmic' });
+    combos.push({ name: '¡DECETO DIVINO (10)!', mult: 120.0, tier: 'cosmic' });
   } else if (sortedCounts[0] === 9) {
-    combos.push({ name: '¡Noneto Cósmico (9)!', mult: 250.0, tier: 'cosmic' });
+    combos.push({ name: '¡Noneto Cósmico (9)!', mult: 80.0, tier: 'cosmic' });
   } else if (sortedCounts[0] === 8) {
-    combos.push({ name: '¡Octeto Titánico (8)!', mult: 120.0, tier: 'cosmic' });
+    combos.push({ name: '¡Octeto Titánico (8)!', mult: 50.0, tier: 'cosmic' });
   } else if (sortedCounts[0] === 7) {
-    combos.push({ name: '¡Septeto Supremo (7)!', mult: 60.0, tier: 'cosmic' });
+    combos.push({ name: '¡Septeto Supremo (7)!', mult: 30.0, tier: 'cosmic' });
   } else if (sortedCounts[0] === 6) {
-    combos.push({ name: '¡Sexteto Perfecto!', mult: 35.0, tier: 'cosmic' });
+    combos.push({ name: '¡Sexteto Perfecto!', mult: 16.0, tier: 'cosmic' });
   } else if (sortedCounts[0] === 5) {
-    combos.push({ name: '¡Quinteto!', mult: 14.0, tier: 'cosmic' });
+    combos.push({ name: '¡Quinteto!', mult: 8.0, tier: 'cosmic' });
   } else if (sortedCounts[0] === 4) {
-    combos.push({ name: '¡Póker (4 Iguales)!', mult: 5.5, tier: 'legendary' });
+    combos.push({ name: '¡Póker (4 Iguales)!', mult: 4.0, tier: 'legendary' });
   } else if (sortedCounts[0] >= 3 && sortedCounts[1] >= 2) {
-    combos.push({ name: '¡Full House!', mult: 3.5, tier: 'epic' });
+    combos.push({ name: '¡Full House!', mult: 2.6, tier: 'epic' });
   } else if (sortedCounts[0] === 3) {
-    combos.push({ name: 'Trío', mult: 2.2, tier: 'rare' });
+    combos.push({ name: 'Trío', mult: 1.8, tier: 'rare' });
   } else if (sortedCounts[0] === 2 && sortedCounts[1] === 2) {
     const pairCount = sortedCounts.filter(c => c >= 2).length;
     if (pairCount >= 4) {
-      combos.push({ name: '¡Cuádruple Pareja!', mult: 3.2, tier: 'epic' });
+      combos.push({ name: '¡Cuádruple Pareja!', mult: 2.4, tier: 'epic' });
     } else if (pairCount === 3) {
-      combos.push({ name: '¡Triple Pareja!', mult: 2.4, tier: 'rare' });
+      combos.push({ name: '¡Triple Pareja!', mult: 1.8, tier: 'rare' });
     } else {
-      combos.push({ name: 'Doble Pareja', mult: 1.6, tier: 'rare' });
+      combos.push({ name: 'Doble Pareja', mult: 1.4, tier: 'rare' });
     }
   } else if (sortedCounts[0] === 2) {
-    combos.push({ name: 'Pareja', mult: 1.25, tier: 'common' });
+    combos.push({ name: 'Pareja', mult: 1.15, tier: 'common' });
   }
 
   // 2. Straights (from 4 up to 10 consecutive dice)
@@ -294,13 +293,13 @@ export const evaluateCombos = (faces: number[], sides: number): ComboResult[] =>
       }
     }
     if (longestStreak >= 8) {
-      combos.push({ name: '¡Mega Escalera (8+)!', mult: 40.0, tier: 'cosmic' });
+      combos.push({ name: '¡Mega Escalera (8+)!', mult: 25.0, tier: 'cosmic' });
     } else if (longestStreak >= 6) {
-      combos.push({ name: '¡Escalera Suprema (6)!', mult: 18.0, tier: 'cosmic' });
+      combos.push({ name: '¡Escalera Suprema (6)!', mult: 12.0, tier: 'cosmic' });
     } else if (longestStreak === 5) {
-      combos.push({ name: '¡Escalera Mayor (5)!', mult: 7.5, tier: 'legendary' });
+      combos.push({ name: '¡Escalera Mayor (5)!', mult: 5.5, tier: 'legendary' });
     } else if (longestStreak === 4) {
-      combos.push({ name: 'Escalera Menor (4)', mult: 2.8, tier: 'epic' });
+      combos.push({ name: 'Escalera Menor (4)', mult: 2.2, tier: 'epic' });
     }
   }
 
@@ -309,15 +308,15 @@ export const evaluateCombos = (faces: number[], sides: number): ComboResult[] =>
     const allEven = faces.every(f => f % 2 === 0);
     const allOdd = faces.every(f => f % 2 !== 0);
     if (allEven) {
-      combos.push({ name: 'Todos Pares', mult: 1.8, tier: 'rare' });
+      combos.push({ name: 'Todos Pares', mult: 1.5, tier: 'rare' });
     } else if (allOdd) {
-      combos.push({ name: 'Todos Impares', mult: 1.8, tier: 'rare' });
+      combos.push({ name: 'Todos Impares', mult: 1.5, tier: 'rare' });
     }
   }
 
   // 4. Critical Nat Max (Requiere 4 o más dados y TODOS en el valor máximo)
   if (faces.length >= 4 && faces.every(f => f === sides)) {
-    const natMult = faces.length >= 8 ? 80.0 : faces.length === 6 ? 30.0 : faces.length === 5 ? 16.0 : 8.0;
+    const natMult = faces.length >= 8 ? 35.0 : faces.length === 6 ? 18.0 : faces.length === 5 ? 10.0 : 5.0;
     combos.push({ name: `¡NATURAL MÁXIMO (D${sides})!`, mult: natMult, tier: 'cosmic' });
   }
 

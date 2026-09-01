@@ -158,19 +158,23 @@ export const DiceTable: React.FC<DiceTableProps> = ({
       // Filter to sliding 3-second window
       rollTimesRef.current = rollTimesRef.current.filter(t => now - t <= 3000);
 
+      let currentRps = rps;
       if (rollTimesRef.current.length >= 2) {
         const times = rollTimesRef.current;
         const spanSec = (times[times.length - 1] - times[0]) / 1000;
         if (spanSec > 0) {
-          setRps((times.length - 1) / spanSec);
+          currentRps = (times.length - 1) / spanSec;
+          setRps(currentRps);
         }
       } else if (prevTime > 0 && now - prevTime <= 5000) {
         const intervalSec = (now - prevTime) / 1000;
         if (intervalSec > 0) {
-          setRps(1 / intervalSec);
+          currentRps = 1 / intervalSec;
+          setRps(currentRps);
         }
       }
 
+      const isHighSpeed = currentRps >= 15;
       const newRollId = rollId;
       prevRollId.current = rollId;
 
@@ -201,9 +205,9 @@ export const DiceTable: React.FC<DiceTableProps> = ({
           }
         }
 
-        // Lightweight Floating Notification Particles (Max 3, if enabled - Instant 100% Solid Opacity)
+        // Lightweight Floating Notification Particles
         if (showFloatingTexts) {
-          const canSpawnParticles = now - lastParticleTimeRef.current > 80;
+          const canSpawnParticles = now - lastParticleTimeRef.current > (isHighSpeed ? 90 : 60);
 
           if (canSpawnParticles) {
             lastParticleTimeRef.current = now;
@@ -255,16 +259,18 @@ export const DiceTable: React.FC<DiceTableProps> = ({
               });
             }
 
-            // Keep strictly at most 3 particles on screen at once
-            setParticles(prev => [...prev.slice(-1), ...newParticles].slice(-3));
+            // Keep up to 4 particles on screen before quick fade
+            const maxParticles = isHighSpeed ? 3 : 4;
+            setParticles(prev => [...prev, ...newParticles].slice(-maxParticles));
+
             setTimeout(() => {
-              setParticles(prev => prev.filter(p => !newParticles.find(np => np.id === p.id)));
-            }, 3000);
+              setParticles(prev => prev.filter(p => !newParticles.some(np => np.id === p.id)));
+            }, isHighSpeed ? 500 : 1500);
           }
         }
       }
     }
-  }, [faces, totalEarned, combos, comboStreak, streakBonus, rollId, showFloatingTexts, enableConfetti]);
+  }, [faces, totalEarned, combos, comboStreak, streakBonus, rollId, showFloatingTexts, enableConfetti, rps]);
 
   return (
     <div 
@@ -312,16 +318,20 @@ export const DiceTable: React.FC<DiceTableProps> = ({
         </div>
       )}
 
-      {/* Lightweight Floating Notification Particles (Max 3, if enabled - Instant 100% Solid Opacity) */}
+      {/* Lightweight Floating Notification Particles */}
       {showFloatingTexts && (
         <AnimatePresence>
           {particles.map(p => (
             <motion.div
               key={p.id}
-              initial={{ opacity: 1, x: p.x, y: p.y, scale: 1.2, rotate: p.rot }}
+              initial={{ opacity: 1, x: p.x, y: p.y, scale: 1.15, rotate: p.rot }}
               animate={{ opacity: 1, x: p.x, y: p.y - 80, scale: 1.0, rotate: p.rot }}
-              exit={{ opacity: 0, scale: 0.85, transition: { duration: 0.2 } }}
-              transition={{ duration: 3.0, ease: 'easeOut' }}
+              exit={
+                rps >= 15
+                  ? { opacity: 0, transition: { duration: 0 } }
+                  : { opacity: 0, y: p.y - 110, scale: 0.75, transition: { duration: 0.18, ease: 'easeOut' } }
+              }
+              transition={{ duration: rps >= 15 ? 0.5 : 1.5, ease: 'easeOut' }}
               className={`absolute font-pixel font-black ${
                 p.type === 'combo' ? 'text-2xl sm:text-4xl z-30' : p.type === 'streak' ? 'text-xl sm:text-3xl z-20' : 'text-3xl sm:text-5xl z-20'
               } ${p.colorClass} pointer-events-none whitespace-nowrap transform-gpu will-change-transform`}

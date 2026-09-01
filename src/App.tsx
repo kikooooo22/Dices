@@ -100,10 +100,12 @@ const AutoRollIndicator = ({
 
       {!isPaused && (
         <svg
+          key={rollsPerSec}
           viewBox="0 0 44 44"
           className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none opacity-40"
         >
           <motion.circle
+            key={rollsPerSec}
             cx="22" cy="22" r={radius}
             fill="transparent"
             stroke="rgb(59, 130, 246)"
@@ -637,11 +639,12 @@ export default function App() {
             >
               <div className="flex justify-between items-center p-3.5 sm:p-4 border-b border-slate-800 bg-slate-950 shrink-0">
                 <div>
-                  <h2 className="text-lg sm:text-xl font-black text-slate-100 flex items-center gap-2">
-                    <ShoppingCart className="w-5 h-5 text-blue-400" /> Tienda de Mejoras
+                  <h2 className="text-base sm:text-lg font-black text-slate-100 flex items-center gap-2">
+                    <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" /> Tienda de Mejoras
                   </h2>
-                  <div className="text-yellow-400 font-pixel text-sm sm:text-base mt-0.5">
-                    {formatNumber(state.points)} pts disponibles
+                  <div className="text-yellow-400 font-pixel text-lg sm:text-2xl font-black mt-0.5 tracking-wide flex items-center gap-1.5 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+                    <span className="text-yellow-300">{formatNumber(state.points)}</span>
+                    <span className="text-xs sm:text-sm font-normal text-yellow-400/80 tracking-normal">pts disponibles</span>
                   </div>
                 </div>
                 <button
@@ -684,7 +687,7 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => { playClickSound(); setIsOptionsOpen(false); }}
-              className="absolute inset-0 z-50 bg-black/85 flex flex-col items-center justify-center p-3 sm:p-4 backdrop-blur-md cursor-pointer"
+              className="absolute inset-0 z-[80] bg-black/85 flex flex-col items-center justify-center p-3 sm:p-4 backdrop-blur-md cursor-pointer"
             >
               {/* Pulsing "JUEGO PAUSADO" Banner outside popup */}
               <motion.div

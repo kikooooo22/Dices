@@ -116,7 +116,7 @@ export const NOTE_FREQUENCIES = {
   La: 440.00,  // A4 (Auto)
   Si: 493.88,  // B4 (Trucos)
   Do: 523.25,  // C5 (Combos)
-  Re: 587.33,  // D5 (Secretos)
+  Re: 587.33,  // D5 (Especial)
 };
 
 export const playTabNote = (note: keyof typeof NOTE_FREQUENCIES) => {
@@ -330,14 +330,14 @@ export const startResetChargeSound = () => {
     osc.frequency.setValueAtTime(40, ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(110, ctx.currentTime + 1.8);
 
-    gain.gain.setValueAtTime(0.01 * masterVolume, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.4 * masterVolume, ctx.currentTime + 1.8);
+    gain.gain.setValueAtTime(0.02 * masterVolume, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.65 * masterVolume, ctx.currentTime + 1.8);
 
     // Deep sub-bass lowpass filter
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(140, ctx.currentTime);
-    filter.frequency.linearRampToValueAtTime(350, ctx.currentTime + 1.8);
+    filter.frequency.setValueAtTime(180, ctx.currentTime);
+    filter.frequency.linearRampToValueAtTime(480, ctx.currentTime + 1.8);
 
     osc.connect(filter);
     filter.connect(gain);
@@ -372,20 +372,32 @@ export const playResetBoomSound = () => {
     const ctx = getAudioCtx();
     if (!ctx) return;
     const now = ctx.currentTime;
+
+    // Sub-bass heavy drop (+50% louder)
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(130, now);
-    osc.frequency.exponentialRampToValueAtTime(25, now + 0.5);
-
-    gain.gain.setValueAtTime(0.6 * masterVolume, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
-
+    osc.frequency.setValueAtTime(150, now);
+    osc.frequency.exponentialRampToValueAtTime(25, now + 0.6);
+    gain.gain.setValueAtTime(0.9 * masterVolume, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start(now);
-    osc.stop(now + 0.5);
+    osc.stop(now + 0.6);
+
+    // Mid-frequency punch/impact for full speaker presence
+    const punchOsc = ctx.createOscillator();
+    const punchGain = ctx.createGain();
+    punchOsc.type = 'triangle';
+    punchOsc.frequency.setValueAtTime(220, now);
+    punchOsc.frequency.exponentialRampToValueAtTime(40, now + 0.25);
+    punchGain.gain.setValueAtTime(0.45 * masterVolume, now);
+    punchGain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    punchOsc.connect(punchGain);
+    punchGain.connect(ctx.destination);
+    punchOsc.start(now);
+    punchOsc.stop(now + 0.25);
   } catch (e) { }
 };
 
