@@ -285,9 +285,11 @@ export const useGameState = (isGlobalPaused: boolean = false) => {
       totalComboMult *= comboM;
     }
 
-    // Streaks mechanic: consecutive combo rolls accumulate +0.5x
+    // Streaks mechanic: consecutive combo rolls accumulate +15% with smooth soft cap
     const newStreak = hasCombo ? current.comboStreak + 1 : 0;
-    const streakBonus = newStreak > 1 ? 1 + (newStreak - 1) * 0.5 : 1;
+    const streakBonus = newStreak > 1 
+      ? Number((1 + Math.min(2.5, (newStreak - 1) * 0.15) + (newStreak > 18 ? Math.min(1.0, (newStreak - 18) * 0.03) : 0)).toFixed(2)) 
+      : 1;
     const newRollId = current.totalRolls + 1;
 
     const totalEarned = Math.round(baseSum * matMult * totalComboMult * streakBonus * current.globalMult);

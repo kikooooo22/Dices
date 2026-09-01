@@ -98,7 +98,7 @@ const CATEGORIES: CategoryConfig[] = [
   },
   {
     id: 'milestones',
-    name: 'Secretos',
+    name: 'Especial',
     note: 'Re',
     icon: Gift,
     activeClass: 'superstar-tab-active text-slate-950 font-black',

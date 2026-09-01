@@ -30,7 +30,7 @@ export const ResetModal: React.FC<ResetModalProps> = ({ onConfirm, onClose }) =>
       setProgress(p);
 
       // Increasing intense shake as progress grows
-      const intensity = (p / 100) * 9; // up to 9px shake
+      const intensity = (p / 100) * 10; // up to 10px shake
       setShakeOffset({
         x: (Math.random() - 0.5) * intensity * 2,
         y: (Math.random() - 0.5) * intensity * 2,
@@ -38,11 +38,16 @@ export const ResetModal: React.FC<ResetModalProps> = ({ onConfirm, onClose }) =>
       });
 
       if (p >= 100) {
+        setProgress(100);
         stopResetChargeSound();
         playResetBoomSound();
         isHoldingRef.current = false;
-        onConfirm();
-        onClose();
+        
+        // Give 120ms to see the full 100% bar and feel the impact before unmounting
+        setTimeout(() => {
+          onConfirm();
+          onClose();
+        }, 120);
       } else {
         reqRef.current = requestAnimationFrame(update);
       }
@@ -68,7 +73,7 @@ export const ResetModal: React.FC<ResetModalProps> = ({ onConfirm, onClose }) =>
 
   return (
     <div 
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 px-4 backdrop-blur-md font-pixel select-none cursor-pointer"
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/85 px-4 backdrop-blur-md font-pixel select-none cursor-pointer"
       onClick={onClose}
     >
       <div 
@@ -98,14 +103,16 @@ export const ResetModal: React.FC<ResetModalProps> = ({ onConfirm, onClose }) =>
             touchAction: 'none'
           }}
           className={`relative w-full py-4 rounded-2xl overflow-hidden font-black text-base sm:text-lg uppercase tracking-wider transition-all select-none border-2 ${
-            progress > 0 
-              ? 'bg-red-950 border-red-500 shadow-[0_0_25px_rgba(239,68,68,0.7)]' 
-              : 'bg-red-900 hover:bg-red-850 border-red-600 border-b-4 border-b-red-950 shadow-[0_3px_0_#450a0a] active:translate-y-0.5'
+            progress >= 100
+              ? 'bg-red-500 border-white shadow-[0_0_40px_rgba(255,255,255,0.9)]'
+              : progress > 0 
+                ? 'bg-red-950 border-red-500 shadow-[0_0_25px_rgba(239,68,68,0.7)]' 
+                : 'bg-red-900 hover:bg-red-850 border-red-600 border-b-4 border-b-red-950 shadow-[0_3px_0_#450a0a] active:translate-y-0.5'
           }`}
         >
           {/* Progress fill bar with pulsating fire gradient */}
           <div 
-            className="absolute inset-y-0 left-0 bg-gradient-to-r from-red-600 via-orange-600 to-red-500 transition-all duration-75"
+            className="absolute inset-y-0 left-0 bg-gradient-to-r from-red-600 via-orange-500 to-amber-400 pointer-events-none"
             style={{ width: `${progress}%` }} 
           />
           
