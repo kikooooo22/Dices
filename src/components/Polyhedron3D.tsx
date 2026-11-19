@@ -1,4 +1,5 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
+import { subscribeRaf } from '../utils/rafLoop';
 
 export type Vector3 = [number, number, number];
 
@@ -132,25 +133,6 @@ const POLYHEDRA_GEOMETRY: Record<number, MeshData> = {
   })()
 };
 
-// Vector math operations
-const rotateX = ([x, y, z]: Vector3, rad: number): Vector3 => [
-  x,
-  y * Math.cos(rad) - z * Math.sin(rad),
-  y * Math.sin(rad) + z * Math.cos(rad)
-];
-
-const rotateY = ([x, y, z]: Vector3, rad: number): Vector3 => [
-  x * Math.cos(rad) + z * Math.sin(rad),
-  y,
-  -x * Math.sin(rad) + z * Math.cos(rad)
-];
-
-const rotateZ = ([x, y, z]: Vector3, rad: number): Vector3 => [
-  x * Math.cos(rad) - y * Math.sin(rad),
-  x * Math.sin(rad) + y * Math.cos(rad),
-  z
-];
-
 // Material Palette Shaders
 export interface MaterialStyle {
   baseColor: string;
@@ -273,6 +255,184 @@ export const getMaterialStyle = (
   return baseMat;
 };
 
+// Pre-normalized light vector pointing from top-left front
+const LIGHT_VEC: Vector3 = (() => {
+  const lx = 0.35;
+  const ly = -0.55;
+  const lz = 0.75;
+  const len = Math.sqrt(lx * lx + ly * ly + lz * lz);
+  return [lx / len, ly / len, lz / len];
+})();
+
+const CANVAS_PAD = 8;
+
+interface ProjectedFace {
+  avgZ: number;
+  fill: string;
+  ptsX: number[];
+  ptsY: number[];
+}
+
+function getDieFontSize(size: number, sides: number): number {
+  if (size >= 85) return sides >= 12 ? 28 : 36;
+  if (size >= 70) return sides >= 12 ? 22 : 28;
+  if (size >= 55) return sides >= 12 ? 18 : 23;
+  return sides >= 12 ? 15 : 18;
+}
+
+/**
+ * Pure Canvas 2D polyhedron renderer. Zero React allocations or SVG DOM mutations.
+ */
+function drawPolyhedronToCanvas(
+  canvas: HTMLCanvasElement,
+  sides: number,
+  size: number,
+  rotX: number,
+  rotY: number,
+  rotZ: number,
+  matStyle: MaterialStyle,
+  displayValue?: number,
+  comboColor?: string
+) {
+  const dpr = window.devicePixelRatio || 1;
+  const canvasCssSize = size + CANVAS_PAD * 2;
+  const targetPixelSize = Math.round(canvasCssSize * dpr);
+
+  if (canvas.width !== targetPixelSize || canvas.height !== targetPixelSize) {
+    canvas.width = targetPixelSize;
+    canvas.height = targetPixelSize;
+  }
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, canvasCssSize, canvasCssSize);
+
+  const mesh = POLYHEDRA_GEOMETRY[sides] || POLYHEDRA_GEOMETRY[6];
+  const radX = (rotX * Math.PI) / 180;
+  const radY = (rotY * Math.PI) / 180;
+  const radZ = (rotZ * Math.PI) / 180;
+
+  const sinX = Math.sin(radX), cosX = Math.cos(radX);
+  const sinY = Math.sin(radY), cosY = Math.cos(radY);
+  const sinZ = Math.sin(radZ), cosZ = Math.cos(radZ);
+
+  const vCount = mesh.vertices.length;
+  const tx = new Float64Array(vCount);
+  const ty = new Float64Array(vCount);
+  const tz = new Float64Array(vCount);
+
+  for (let i = 0; i < vCount; i++) {
+    const [vx, vy, vz] = mesh.vertices[i];
+    const y1 = vy * cosX - vz * sinX;
+    const z1 = vy * sinX + vz * cosX;
+    const x2 = vx * cosY + z1 * sinY;
+    const z2 = -vx * sinY + z1 * cosY;
+    tx[i] = x2 * cosZ - y1 * sinZ;
+    ty[i] = x2 * sinZ + y1 * cosZ;
+    tz[i] = z2;
+  }
+
+  const cx = canvasCssSize / 2;
+  const cy = canvasCssSize / 2;
+  const scale = size * 0.36;
+
+  const visibleFaces: ProjectedFace[] = [];
+  let maxNz = -999;
+  let frontmostIndex = -1;
+  let frontmostCentroidX = cx;
+  let frontmostCentroidY = cy;
+
+  for (let fIdx = 0; fIdx < mesh.faces.length; fIdx++) {
+    const faceVertIndices = mesh.faces[fIdx];
+    const fLen = faceVertIndices.length;
+
+    let nx = 0, ny = 0, nz = 0;
+    for (let i = 0; i < fLen; i++) {
+      const currIdx = faceVertIndices[i];
+      const nextIdx = faceVertIndices[(i + 1) % fLen];
+      nx += (ty[currIdx] - ty[nextIdx]) * (tz[currIdx] + tz[nextIdx]);
+      ny += (tz[currIdx] - tz[nextIdx]) * (tx[currIdx] + tx[nextIdx]);
+      nz += (tx[currIdx] - tx[nextIdx]) * (ty[currIdx] + ty[nextIdx]);
+    }
+
+    const normLen = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    if (normLen < 1e-6) continue;
+
+    const unx = nx / normLen;
+    const uny = ny / normLen;
+    const unz = nz / normLen;
+
+    if (unz >= -0.05) {
+      const dot = unx * LIGHT_VEC[0] + uny * LIGHT_VEC[1] + unz * LIGHT_VEC[2];
+      const intensity = Math.max(0.18, Math.min(1.0, 0.45 + dot * 0.55));
+      const fill = matStyle.getFaceFill(intensity, fIdx);
+
+      let sumX = 0, sumY = 0, sumZ = 0;
+      const ptsX: number[] = new Array(fLen);
+      const ptsY: number[] = new Array(fLen);
+
+      for (let i = 0; i < fLen; i++) {
+        const vIdx = faceVertIndices[i];
+        const px = cx + tx[vIdx] * scale;
+        const py = cy - ty[vIdx] * scale;
+        ptsX[i] = px;
+        ptsY[i] = py;
+        sumX += px;
+        sumY += py;
+        sumZ += tz[vIdx];
+      }
+
+      const fCentroidX = sumX / fLen;
+      const fCentroidY = sumY / fLen;
+      const avgZ = sumZ / fLen;
+
+      if (unz > maxNz) {
+        maxNz = unz;
+        frontmostIndex = fIdx;
+        frontmostCentroidX = fCentroidX;
+        frontmostCentroidY = fCentroidY;
+      }
+
+      visibleFaces.push({ avgZ, fill, ptsX, ptsY });
+    }
+  }
+
+  visibleFaces.sort((a, b) => a.avgZ - b.avgZ);
+
+  ctx.strokeStyle = matStyle.strokeColor;
+  ctx.lineWidth = matStyle.strokeWidth;
+  ctx.lineJoin = 'round';
+
+  for (let i = 0; i < visibleFaces.length; i++) {
+    const face = visibleFaces[i];
+    ctx.beginPath();
+    ctx.moveTo(face.ptsX[0], face.ptsY[0]);
+    for (let j = 1; j < face.ptsX.length; j++) {
+      ctx.lineTo(face.ptsX[j], face.ptsY[j]);
+    }
+    ctx.closePath();
+    ctx.fillStyle = face.fill;
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  if (displayValue !== undefined && frontmostIndex !== -1) {
+    const fontSize = getDieFontSize(size, sides);
+    const label = String(displayValue);
+    ctx.font = `900 ${fontSize}px 'VT323', monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 4;
+    ctx.strokeText(label, frontmostCentroidX, frontmostCentroidY);
+    ctx.fillStyle = comboColor ? '#ffffff' : matStyle.textColor;
+    ctx.fillText(label, frontmostCentroidX, frontmostCentroidY);
+  }
+}
+
 interface PolyhedronDieProps {
   sides: number;
   size?: number;
@@ -296,156 +456,44 @@ export const PolyhedronDie: React.FC<PolyhedronDieProps> = ({
   isGhost = false,
   comboColor
 }) => {
-  const mesh = POLYHEDRA_GEOMETRY[sides] || POLYHEDRA_GEOMETRY[6];
-  const matStyle = useMemo(() => getMaterialStyle(materialLevel, isGhost, comboColor), [materialLevel, isGhost, comboColor]);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const matStyle = useMemo(
+    () => getMaterialStyle(materialLevel, isGhost, comboColor),
+    [materialLevel, isGhost, comboColor]
+  );
 
-  // Light vector pointing from top-left front (normalized)
-  const lightVec: Vector3 = useMemo(() => {
-    const lx = 0.35;
-    const ly = -0.55;
-    const lz = 0.75;
-    const len = Math.sqrt(lx * lx + ly * ly + lz * lz);
-    return [lx / len, ly / len, lz / len];
-  }, []);
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    drawPolyhedronToCanvas(
+      canvasRef.current,
+      sides,
+      size,
+      rotX,
+      rotY,
+      rotZ,
+      matStyle,
+      displayValue,
+      comboColor
+    );
+  }, [sides, size, rotX, rotY, rotZ, matStyle, displayValue, comboColor]);
 
-  const { visibleFaces, bestFaceIndex, bestFaceCentroid } = useMemo(() => {
-    const radX = (rotX * Math.PI) / 180;
-    const radY = (rotY * Math.PI) / 180;
-    const radZ = (rotZ * Math.PI) / 180;
-
-    // Transform all vertices
-    const transformed = mesh.vertices.map(v => {
-      let cur = rotateX(v, radX);
-      cur = rotateY(cur, radY);
-      cur = rotateZ(cur, radZ);
-      return cur;
-    });
-
-    const cx = size / 2;
-    const cy = size / 2;
-    const scale = size * 0.36;
-
-    const facesData: {
-      faceIndex: number;
-      points: string;
-      centroid: [number, number];
-      avgZ: number;
-      nz: number;
-      fill: string;
-    }[] = [];
-
-    let maxNz = -999;
-    let frontmostIndex = -1;
-    let frontmostCentroid: [number, number] = [cx, cy];
-
-    mesh.faces.forEach((faceVertIndices, fIdx) => {
-      let nx = 0, ny = 0, nz = 0;
-      for (let i = 0; i < faceVertIndices.length; i++) {
-        const curr = transformed[faceVertIndices[i]];
-        const next = transformed[faceVertIndices[(i + 1) % faceVertIndices.length]];
-        nx += (curr[1] - next[1]) * (curr[2] + next[2]);
-        ny += (curr[2] - next[2]) * (curr[0] + next[0]);
-        nz += (curr[0] - next[0]) * (curr[1] + next[1]);
-      }
-
-      const normLen = Math.sqrt(nx * nx + ny * ny + nz * nz);
-      if (normLen < 1e-6) return;
-
-      const unx = nx / normLen;
-      const uny = ny / normLen;
-      const unz = nz / normLen;
-
-      // Backface culling: unz >= -0.05 ensures complete silhouette without edge gaps or flickering
-      if (unz >= -0.05) {
-        // Compute lighting (diffuse dot product with light source)
-        const dot = unx * lightVec[0] + uny * lightVec[1] + unz * lightVec[2];
-        const intensity = Math.max(0.18, Math.min(1.0, 0.45 + dot * 0.55));
-        const fill = matStyle.getFaceFill(intensity, fIdx);
-
-        // Project 2D coordinates and calculate centroid and avg depth
-        let sumX = 0;
-        let sumY = 0;
-        let sumZ = 0;
-        const pts = faceVertIndices.map(vIdx => {
-          const tv = transformed[vIdx];
-          const px = cx + tv[0] * scale;
-          const py = cy - tv[1] * scale; // Invert Y for screen coordinates
-          sumX += px;
-          sumY += py;
-          sumZ += tv[2];
-          return `${px.toFixed(1)},${py.toFixed(1)}`;
-        }).join(' ');
-
-        const count = faceVertIndices.length;
-        const fCentroid: [number, number] = [sumX / count, sumY / count];
-        const avgZ = sumZ / count;
-
-        if (unz > maxNz) {
-          maxNz = unz;
-          frontmostIndex = fIdx;
-          frontmostCentroid = fCentroid;
-        }
-
-        facesData.push({
-          faceIndex: fIdx,
-          points: pts,
-          centroid: fCentroid,
-          avgZ,
-          nz: unz,
-          fill
-        });
-      }
-    });
-
-    // Painter's algorithm depth sort: render furthest faces first
-    facesData.sort((a, b) => a.avgZ - b.avgZ);
-
-    return {
-      visibleFaces: facesData,
-      bestFaceIndex: frontmostIndex,
-      bestFaceCentroid: frontmostCentroid
-    };
-  }, [mesh, rotX, rotY, rotZ, size, lightVec, matStyle]);
+  const canvasCssSize = size + CANVAS_PAD * 2;
 
   return (
-    <div 
+    <div
       className="relative flex items-center justify-center select-none shrink-0"
       style={{ width: size, height: size, filter: matStyle.glowFilter }}
     >
-      <svg width={size} height={size} className="overflow-visible block">
-        {visibleFaces.map(f => (
-          <polygon
-            key={f.faceIndex}
-            points={f.points}
-            fill={f.fill}
-            stroke={matStyle.strokeColor}
-            strokeWidth={matStyle.strokeWidth}
-            strokeLinejoin="round"
-          />
-        ))}
-      </svg>
-
-      {/* Render Rolled Number on the Most Camera-Facing Face */}
-      {displayValue !== undefined && bestFaceIndex !== -1 && (
-        <div
-          className="absolute pointer-events-none font-pixel font-black text-center flex items-center justify-center drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]"
-          style={{
-            left: `${bestFaceCentroid[0]}px`,
-            top: `${bestFaceCentroid[1]}px`,
-            transform: 'translate(-50%, -50%)',
-            color: comboColor ? '#ffffff' : matStyle.textColor,
-            fontSize: size >= 85 ? (sides >= 12 ? '28px' : '36px') : size >= 70 ? (sides >= 12 ? '22px' : '28px') : size >= 55 ? (sides >= 12 ? '18px' : '23px') : (sides >= 12 ? '15px' : '18px'),
-            textShadow: '2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 0 3px 6px rgba(0,0,0,0.95)'
-          }}
-        >
-          {displayValue}
-        </div>
-      )}
+      <canvas
+        ref={canvasRef}
+        className="pointer-events-none block shrink-0"
+        style={{ width: canvasCssSize, height: canvasCssSize }}
+      />
     </div>
   );
 };
 
-// Bottom-left & Shop 3D Infinite Spinning Die Preview (Throttled & paused when hidden for high efficiency)
+// Bottom-left & Shop 3D Infinite Spinning Die Preview (Unified rAF, zero React re-renders)
 export const VectorSpinningDiePreview = React.memo(({
   sides,
   materialLevel
@@ -453,46 +501,53 @@ export const VectorSpinningDiePreview = React.memo(({
   sides: number;
   materialLevel: number;
 }) => {
-  const [angle, setAngle] = useState(0);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const matStyle = useMemo(() => getMaterialStyle(materialLevel, false), [materialLevel]);
+  const size = 38;
+  const canvasCssSize = size + CANVAS_PAD * 2;
 
   useEffect(() => {
-    let animFrame: number;
     let lastUpdate = 0;
-    let start = performance.now();
+    const start = performance.now();
 
-    const loop = (now: number) => {
-      if (document.hidden) {
-        animFrame = requestAnimationFrame(loop);
-        return;
-      }
-      // Throttle to 30 FPS for silky preview with minimal CPU usage
-      if (now - lastUpdate > 32) {
-        lastUpdate = now;
-        const elapsed = (now - start) / 1000;
-        setAngle(elapsed * 40);
-      }
-      animFrame = requestAnimationFrame(loop);
-    };
+    if (canvasRef.current) {
+      drawPolyhedronToCanvas(canvasRef.current, sides, size, 24, 0, 0, matStyle);
+    }
 
-    animFrame = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(animFrame);
-  }, []);
+    return subscribeRaf((now) => {
+      if (now - lastUpdate <= 32) return;
+      lastUpdate = now;
+      if (!canvasRef.current) return;
+      const angle = ((now - start) / 1000) * 40;
+      drawPolyhedronToCanvas(
+        canvasRef.current,
+        sides,
+        size,
+        24,
+        angle,
+        angle * 0.4,
+        matStyle
+      );
+    });
+  }, [sides, matStyle]);
 
   return (
     <div className="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center shrink-0">
-      <PolyhedronDie
-        sides={sides}
-        size={38}
-        rotX={24}
-        rotY={angle}
-        rotZ={angle * 0.4}
-        materialLevel={materialLevel}
-      />
+      <div
+        className="relative flex items-center justify-center select-none shrink-0"
+        style={{ width: size, height: size, filter: matStyle.glowFilter }}
+      >
+        <canvas
+          ref={canvasRef}
+          className="pointer-events-none block shrink-0"
+          style={{ width: canvasCssSize, height: canvasCssSize }}
+        />
+      </div>
     </div>
   );
 });
 
-// Interactive 3D Table Rolling Die with customizable tumble animation
+// Interactive 3D Table Rolling Die with unified rAF tumble animation (zero React state updates per frame)
 export const VectorTrue3DDie = React.memo(({
   finalFace,
   sides,
@@ -500,7 +555,7 @@ export const VectorTrue3DDie = React.memo(({
   rollId,
   manualCooldown,
   animationSpeedMult = 1,
-  size,
+  size = 72,
   isGhost = false,
   comboColor,
   enableTumbleAnimation = true
@@ -516,7 +571,8 @@ export const VectorTrue3DDie = React.memo(({
   comboColor?: string;
   enableTumbleAnimation?: boolean;
 }) => {
-  // Resting 3D isometric angles for each dice polyhedron
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
   const defaultRot = useMemo(() => {
     switch (sides) {
       case 8: return { x: 35, y: 45, z: 0 };
@@ -528,67 +584,116 @@ export const VectorTrue3DDie = React.memo(({
     }
   }, [sides]);
 
-  const [rot, setRot] = useState<{ x: number; y: number; z: number }>(defaultRot);
-  const [isRolling, setIsRolling] = useState(false);
+  const rollingMatStyle = useMemo(
+    () => getMaterialStyle(materialLevel, isGhost, undefined),
+    [materialLevel, isGhost]
+  );
+  const settledMatStyle = useMemo(
+    () => getMaterialStyle(materialLevel, isGhost, comboColor),
+    [materialLevel, isGhost, comboColor]
+  );
 
   useEffect(() => {
-    if (rollId === 0) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-    if (!enableTumbleAnimation) {
-      // In static mode, keep die at resting angle with immediate face update
-      setRot(defaultRot);
-      setIsRolling(false);
+    if (rollId === 0 || !enableTumbleAnimation) {
+      drawPolyhedronToCanvas(
+        canvas,
+        sides,
+        size,
+        defaultRot.x,
+        defaultRot.y,
+        defaultRot.z,
+        settledMatStyle,
+        finalFace,
+        comboColor
+      );
       return;
     }
 
-    setIsRolling(true);
     const duration = Math.max(50, Math.min(500, (manualCooldown * 600) / animationSpeedMult));
     const startTime = performance.now();
-
-    // Random initial tumbling velocities
     const startRotX = Math.random() * 540 + 270;
     const startRotY = Math.random() * 540 + 270;
     const startRotZ = Math.random() * 180;
 
-    let reqId: number;
-    const animateTumble = (now: number) => {
+    let unsubscribe: (() => void) | null = null;
+    let finished = false;
+
+    unsubscribe = subscribeRaf((now) => {
+      if (finished || !canvasRef.current) return;
       const elapsed = now - startTime;
       const progress = Math.min(1, elapsed / duration);
       const ease = 1 - Math.pow(1 - progress, 3);
 
-      const curX = startRotX * (1 - ease) + defaultRot.x * ease;
-      const curY = startRotY * (1 - ease) + defaultRot.y * ease;
-      const curZ = startRotZ * (1 - ease) + defaultRot.z * ease;
-
-      setRot({ x: curX, y: curY, z: curZ });
-
       if (progress < 1) {
-        reqId = requestAnimationFrame(animateTumble);
+        const curX = startRotX * (1 - ease) + defaultRot.x * ease;
+        const curY = startRotY * (1 - ease) + defaultRot.y * ease;
+        const curZ = startRotZ * (1 - ease) + defaultRot.z * ease;
+        const rollingFace = Math.floor(Math.random() * sides) + 1;
+
+        drawPolyhedronToCanvas(
+          canvasRef.current,
+          sides,
+          size,
+          curX,
+          curY,
+          curZ,
+          rollingMatStyle,
+          rollingFace
+        );
       } else {
-        setIsRolling(false);
+        finished = true;
+        drawPolyhedronToCanvas(
+          canvasRef.current,
+          sides,
+          size,
+          defaultRot.x,
+          defaultRot.y,
+          defaultRot.z,
+          settledMatStyle,
+          finalFace,
+          comboColor
+        );
+        if (unsubscribe) {
+          unsubscribe();
+          unsubscribe = null;
+        }
+      }
+    });
+
+    return () => {
+      finished = true;
+      if (unsubscribe) {
+        unsubscribe();
       }
     };
+  }, [
+    rollId,
+    finalFace,
+    sides,
+    size,
+    manualCooldown,
+    animationSpeedMult,
+    enableTumbleAnimation,
+    defaultRot,
+    rollingMatStyle,
+    settledMatStyle,
+    comboColor
+  ]);
 
-    reqId = requestAnimationFrame(animateTumble);
-    return () => cancelAnimationFrame(reqId);
-  }, [rollId, sides, manualCooldown, animationSpeedMult, enableTumbleAnimation, defaultRot]);
-
-  const activeColor = isRolling ? undefined : comboColor;
+  const canvasCssSize = size + CANVAS_PAD * 2;
 
   return (
     <div
       className={`relative flex items-center justify-center shrink-0 ${isGhost ? 'animate-pulse' : ''}`}
+      style={{ width: size, height: size, filter: settledMatStyle.glowFilter }}
     >
-      <PolyhedronDie
-        sides={sides}
-        size={size || 72}
-        rotX={rot.x}
-        rotY={rot.y}
-        rotZ={rot.z}
-        materialLevel={materialLevel}
-        displayValue={isRolling ? Math.floor(Math.random() * sides) + 1 : finalFace}
-        isGhost={isGhost}
-        comboColor={activeColor}
+      <canvas
+        ref={canvasRef}
+        className="pointer-events-none block shrink-0"
+        style={{ width: canvasCssSize, height: canvasCssSize }}
       />
     </div>
   );

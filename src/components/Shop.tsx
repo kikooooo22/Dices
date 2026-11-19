@@ -6,14 +6,6 @@ import {
   getCost,
   UpgradeDef,
   UpgradeCategory,
-  getDiceSides,
-  getMaterialTierName,
-  getMaterialMult,
-  getManualCooldown,
-  getAutoRollsPerSec,
-  getAnimationSpeedMult,
-  getFlatBonus,
-  getComboMult,
   getMilestoneRequiredUpgrades
 } from '../game/engine';
 import { GameState } from '../hooks/useGameState';
@@ -174,51 +166,12 @@ export const Shop: React.FC<ShopProps> = ({
 
   const currentTabConfig = CATEGORIES.find(c => c.id === activeTab) || CATEGORIES[0];
 
-  // Real-time state indicator for each upgrade card
-  const getUpgradeStateSummary = (def: UpgradeDef, level: number, isMax: boolean) => {
-    switch (def.id) {
-      case 'extra_dice':
-        return `Dados activos: ${level + 1} dados${!isMax ? ` → ${level + 2} dados` : ''}`;
-      case 'dice_sides':
-        return `Caras del dado: D${getDiceSides(level)}${!isMax ? ` → D${getDiceSides(level + 1)}` : ''}`;
-      case 'material_tier':
-        return `Material: ${getMaterialTierName(level)} (x${getMaterialMult(level)})${!isMax ? ` → ${getMaterialTierName(level + 1)} (x${getMaterialMult(level + 1)})` : ''}`;
-      case 'manual_cooldown':
-        return `Recarga: ${getManualCooldown(level).toFixed(3)}s (${(1 / getManualCooldown(level)).toFixed(1)}/s)${!isMax ? ` → ${getManualCooldown(level + 1).toFixed(3)}s (${(1 / getManualCooldown(level + 1)).toFixed(1)}/s)` : ''}`;
-      case 'auto_roller':
-        return level > 0
-          ? `Tiros automáticos: ${getAutoRollsPerSec(level).toFixed(1)} tiros/s${!isMax ? ` → ${getAutoRollsPerSec(level + 1).toFixed(1)} tiros/s` : ''}`
-          : 'Inactivo → Desbloquear 0.3 tiros/s';
-      case 'cushioned_surface':
-        return `Velocidad animación: x${getAnimationSpeedMult(level).toFixed(1)}${!isMax ? ` → x${getAnimationSpeedMult(level + 1).toFixed(1)}` : ''}`;
-      case 'hold_to_roll':
-        return level > 0 ? 'Tiro continuo activado (mantén presionado)' : 'Habilita disparar manteniendo presionado';
-      case 'flat_bonus':
-        return `Puntos base por dado: +${getFlatBonus(level)} pts${!isMax ? ` → +${getFlatBonus(level + 1)} pts` : ''}`;
-      case 'less_is_more':
-        return `Probabilidad de convertir 1s en máximo: ${level * 5}%${!isMax ? ` → ${(level + 1) * 5}%` : ''}`;
-      case 'table_magnetism':
-        return `Probabilidad de dados repetidos / pares: ${level * 8}%${!isMax ? ` → ${(level + 1) * 8}%` : ''}`;
-      case 'ghost_dice': {
-        const prob = level === 0 ? 0 : Math.round((0.02 + (level - 1) * 0.07) * 100);
-        const nextProb = Math.round((0.02 + level * 0.07) * 100);
-        return `Probabilidad de dado fantasma: ${prob}%${!isMax ? ` → ${nextProb}%` : ''}`;
-      }
-      case 'combo_mult':
-        return `Multiplicador de combos: x${getComboMult(level).toFixed(1)}${!isMax ? ` → x${getComboMult(level + 1).toFixed(1)}` : ''}`;
-      case 'cosmic_secret':
-        return `Nivel de misterio: Lvl ${level}${!isMax ? ` → Lvl ${level + 1}` : ''}`;
-      default:
-        return '';
-    }
-  };
-
   const renderUpgradeCard = (def: UpgradeDef) => {
     const currentLevel = state.upgrades[def.id] || 0;
     const isMax = currentLevel >= def.maxLevel;
     const cost = getCost(def.id, currentLevel);
     const canAfford = state.points >= cost;
-    const summary = getUpgradeStateSummary(def, currentLevel, isMax);
+    const summary = def.formatSummary(currentLevel, isMax);
     const isTutorialTarget = tutorialStep === 4 && def.id === 'manual_cooldown';
     const isLockedByTutorial = tutorialStep > 0 && def.id !== 'manual_cooldown';
 
