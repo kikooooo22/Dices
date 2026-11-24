@@ -20,6 +20,7 @@ interface DiceTableProps {
   cooldownActive: boolean;
   totalEarned: number | null;
   combos: ComboResult[];
+  colorMap?: Record<number, string>;
   comboStreak?: number;
   streakBonus?: number;
   showFloatingTexts?: boolean;
@@ -64,6 +65,7 @@ export const DiceTable: React.FC<DiceTableProps> = ({
   cooldownActive,
   totalEarned,
   combos = [],
+  colorMap,
   comboStreak = 0,
   streakBonus = 1,
   showFloatingTexts = true,
@@ -87,10 +89,11 @@ export const DiceTable: React.FC<DiceTableProps> = ({
   const rowGap = 'gap-2 sm:gap-3.5';
   const colGap = 'gap-3 sm:gap-6';
 
-  // Map each individual die to its matching cluster's unique color
+  // Reuse precomputed combo color map from simulation when provided
   const comboColorMap = useMemo(() => {
+    if (colorMap) return colorMap;
     return getDiceComboColorMap(faces, sides);
-  }, [faces, sides]);
+  }, [colorMap, faces, sides]);
 
   // Combine regular dice and ghost dice into rows of up to 3
   const diceRows = useMemo(() => {

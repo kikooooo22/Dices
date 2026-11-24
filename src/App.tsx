@@ -5,11 +5,16 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useGameState } from './hooks/useGameState';
+import { gameEvents } from './core/events';
+import { useGameStore } from './core/store';
 import { DiceTable, SpinningDiePreview } from './components/DiceTable';
+import { ActiveBuffsBar } from './components/ActiveBuffsBar';
 import { PolyhedronDie } from './components/Polyhedron3D';
 import { Shop } from './components/Shop';
 import { ResetModal } from './components/ResetModal';
 import { TutorialOverlay } from './components/TutorialOverlay';
+import { MinigamesModal } from './features/minigames/MinigamesModal';
+import { MINIGAME_REGISTRY } from './features/minigames/registry';
 import {
   getManualCooldown,
   getDiceSides,
@@ -43,7 +48,9 @@ import {
   Zap,
   HelpCircle,
   Lock,
-  Dices
+  Dices,
+  Gamepad2,
+  Coins
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -204,9 +211,21 @@ export default function App() {
   } = useGameState(isOptionsOpen);
 
   const [cooldownActive, setCooldownActive] = useState(false);
-  const [cooldownFraction, setCooldownFraction] = useState(0); // 0 (ready) to 1 (just fired)
+  const [cooldownRunId, setCooldownRunId] = useState(0);
   const [isShopOpen, setIsShopOpen] = useState(false);
+  const [isMinigamesOpen, setIsMinigamesOpen] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
+  const [offlineNotice, setOfflineNotice] = useState<{
+    elapsedSec: number;
+    rollsSimulated: number;
+    pointsEarned: number;
+  } | null>(null);
+
+  useEffect(() => {
+    return gameEvents.on('offline:rewarded', (payload) => {
+      setOfflineNotice(payload);
+    });
+  }, []);
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = parseFloat(e.target.value);
@@ -216,7 +235,7 @@ export default function App() {
 
   const holdIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isHoldingRef = useRef(false);
-  const progressReqRef = useRef<number | null>(null);
+  const cooldownTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastRollTimeRef = useRef(0);
 
   const standardUpgradesBought = useMemo(() => Object.entries(state.upgrades).reduce(
@@ -231,6 +250,11 @@ export default function App() {
     const currentLevel = state.upgrades[def.id] || 0;
     return currentLevel < def.maxLevel && state.points >= getCost(def.id, currentLevel);
   }).length, [state.upgrades, state.points, isSecretLocked]);
+
+  const unlockedMinigamesCount = useMemo(
+    () => MINIGAME_REGISTRY.filter(mg => mg.isUnlocked(state)).length,
+    [state]
+  );
 
   const sides = getDiceSides(state.upgrades.dice_sides);
   const materialTier = state.upgrades.material_tier;
@@ -306,28 +330,16 @@ export default function App() {
     }
 
     setCooldownActive(true);
-    setCooldownFraction(1);
+    setCooldownRunId(prev => prev + 1);
 
-    const startTime = Date.now();
-
-    if (progressReqRef.current) {
-      cancelAnimationFrame(progressReqRef.current);
+    if (cooldownTimeoutRef.current) {
+      clearTimeout(cooldownTimeoutRef.current);
     }
 
-    const updateProgress = () => {
-      const elapsed = Date.now() - startTime;
-      const fraction = Math.max(0, 1 - (elapsed / cdMs));
-      setCooldownFraction(fraction);
-
-      if (elapsed < cdMs) {
-        progressReqRef.current = requestAnimationFrame(updateProgress);
-      } else {
-        setCooldownActive(false);
-        setCooldownFraction(0);
-        progressReqRef.current = null;
-      }
-    };
-    progressReqRef.current = requestAnimationFrame(updateProgress);
+    cooldownTimeoutRef.current = setTimeout(() => {
+      setCooldownActive(false);
+      cooldownTimeoutRef.current = null;
+    }, cdMs);
   };
 
   const startHold = (e?: React.PointerEvent) => {
@@ -372,6 +384,10 @@ export default function App() {
       window.removeEventListener('pointercancel', handleGlobalRelease);
       window.removeEventListener('touchend', handleGlobalRelease);
       window.removeEventListener('touchcancel', handleGlobalRelease);
+      stopHold();
+      if (cooldownTimeoutRef.current) {
+        clearTimeout(cooldownTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -379,6 +395,7 @@ export default function App() {
   const handleOpenShop = () => {
     if (tutorialStep > 0 && tutorialStep !== 3) return; // Shop locked before step 3
     playClickSound();
+    setIsMinigamesOpen(false);
     setIsShopOpen(true);
     if (tutorialStep === 3) {
       setTutorialStep(40); // Show shop introduction pop-up
@@ -442,6 +459,11 @@ export default function App() {
                     <Flame className="w-3 h-3 text-orange-400" /> x{state.comboStreak}
                   </span>
                 )}
+                {(state.currencies.chips > 0 || unlockedMinigamesCount > 0) && (
+                  <span className="text-[10px] sm:text-xs font-black bg-emerald-950/90 text-emerald-300 border border-emerald-500/70 px-1.5 py-0.2 rounded-full flex items-center gap-1" title="Fichas de Casino">
+                    <Coins className="w-3 h-3 text-emerald-400" /> {formatNumber(state.currencies.chips)}
+                  </span>
+                )}
               </div>
               <div className="text-2xl sm:text-4xl font-pixel text-yellow-400 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-wide leading-none mt-0.5">
                 {formatNumber(state.points)} pts
@@ -463,6 +485,29 @@ export default function App() {
                 title="Opciones y Rendimiento"
               >
                 <Settings className="w-4 h-4 sm:w-5 sm:h-5 text-slate-300" />
+              </button>
+
+              {/* Minigames Button */}
+              <button
+                onClick={() => {
+                  if (tutorialStep > 0) return;
+                  playClickSound();
+                  setIsShopOpen(false);
+                  setIsMinigamesOpen(true);
+                }}
+                disabled={tutorialStep > 0}
+                className={`relative p-2 sm:p-3 rounded-xl sm:rounded-2xl border-2 transition-all flex items-center gap-1.5 font-bold ${tutorialStep > 0
+                  ? 'bg-emerald-900/50 text-white/50 border-emerald-800/50 border-b-4 border-b-emerald-950 cursor-not-allowed'
+                  : 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400 border-b-4 border-b-emerald-800 shadow-[0_2px_0_#065f46] active:translate-y-0.5 active:border-b-2 active:shadow-none cursor-pointer'
+                  }`}
+                title={tutorialStep > 0 ? 'Bloqueado durante el tutorial' : 'Salón de Minijuegos'}
+              >
+                <Gamepad2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                {unlockedMinigamesCount > 0 && tutorialStep === 0 && (
+                  <span className="absolute -top-2 -right-1.5 bg-amber-400 text-slate-950 text-[10px] font-black w-4.5 h-4.5 sm:w-5 sm:h-5 flex items-center justify-center rounded-full border-2 border-slate-950 shadow-md">
+                    {unlockedMinigamesCount}
+                  </span>
+                )}
               </button>
 
               {/* Shop Button with Clean Visuals & Spotlight when Tutorial Step 3 */}
@@ -526,6 +571,9 @@ export default function App() {
           </div>
         </header>
 
+        {/* Active Temporary Buffs Bar */}
+        <ActiveBuffsBar />
+
         {/* Dice Virtual Casino Table with full highlight on Tutorial Step 1 */}
         <main
           className={`flex-1 min-h-0 flex flex-col p-2 sm:p-4 bg-slate-950 relative overflow-hidden transition-all ${tutorialStep === 1 ? 'ring-4 ring-emerald-400 ring-offset-2 ring-offset-slate-950 rounded-2xl sm:rounded-3xl shadow-[0_0_35px_rgba(52,211,153,0.4)] z-20' : ''
@@ -545,6 +593,7 @@ export default function App() {
             cooldownActive={cooldownActive}
             totalEarned={lastRoll?.totalEarned || null}
             combos={lastRoll?.combos || []}
+            colorMap={lastRoll?.colorMap}
             comboStreak={state.comboStreak}
             streakBonus={lastRoll?.streakBonus || 1}
             showFloatingTexts={graphics.showFloatingTexts}
@@ -603,23 +652,27 @@ export default function App() {
                 : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border-emerald-400 border-b-4 border-b-emerald-800 shadow-[0_4px_0_#065f46] active:translate-y-1 active:border-b-2 active:shadow-none'
               }`}
           >
-            {/* Recharge Energy Bar */}
-            <div
-              className="absolute inset-0 bg-gradient-to-r from-emerald-600/40 via-teal-500/50 to-emerald-400/40 pointer-events-none transition-opacity"
-              style={{
-                opacity: cooldownActive ? 1 : 0,
-                width: `${(1 - cooldownFraction) * 100}%`,
-              }}
-            />
+            {/* Recharge Energy Bar (GPU-composited scaleX, zero React re-renders) */}
+            {cooldownActive && (
+              <div
+                key={`fill-${cooldownRunId}`}
+                className="absolute inset-0 bg-gradient-to-r from-emerald-600/40 via-teal-500/50 to-emerald-400/40 pointer-events-none origin-left will-change-transform"
+                style={{
+                  animation: `cooldownFillX ${manualCooldown}s linear forwards`,
+                }}
+              />
+            )}
 
             {/* Dark Mask on Uncharged Portion */}
-            <div
-              className="absolute top-0 bottom-0 right-0 bg-black/45 pointer-events-none transition-opacity"
-              style={{
-                opacity: cooldownActive ? 1 : 0,
-                width: `${cooldownFraction * 100}%`,
-              }}
-            />
+            {cooldownActive && (
+              <div
+                key={`mask-${cooldownRunId}`}
+                className="absolute inset-0 bg-black/45 pointer-events-none origin-right will-change-transform"
+                style={{
+                  animation: `cooldownMaskX ${manualCooldown}s linear forwards`,
+                }}
+              />
+            )}
 
             <span className="relative z-10 font-pixel drop-shadow-md flex items-center justify-center">
               ¡TIRAR DADOS!
@@ -666,6 +719,37 @@ export default function App() {
                   tutorialStep={tutorialStep}
                 />
               </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Minigames Modal Drawer */}
+        <AnimatePresence>
+          {isMinigamesOpen && (
+            <MinigamesModal onClose={() => setIsMinigamesOpen(false)} />
+          )}
+        </AnimatePresence>
+
+        {/* Offline Progress Toast */}
+        <AnimatePresence>
+          {offlineNotice && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              onClick={() => setOfflineNotice(null)}
+              className="absolute top-20 left-3 right-3 z-[75] bg-slate-900/95 border-2 border-emerald-400 rounded-2xl p-3 shadow-2xl flex items-center justify-between gap-3 cursor-pointer"
+            >
+              <div>
+                <div className="text-xs sm:text-sm font-black text-emerald-300 uppercase tracking-wider">
+                  ¡Progreso Offline!
+                </div>
+                <div className="text-xs text-slate-200 font-sans">
+                  Tu Mano Mecánica simuló <strong className="text-white">{offlineNotice.rollsSimulated.toLocaleString()}</strong> tiradas ({Math.floor(offlineNotice.elapsedSec / 60)}m {offlineNotice.elapsedSec % 60}s):{' '}
+                  <strong className="text-yellow-300 font-pixel">+{formatNumber(offlineNotice.pointsEarned)} pts</strong>
+                </div>
+              </div>
+              <X className="w-4 h-4 text-slate-400 shrink-0" />
             </motion.div>
           )}
         </AnimatePresence>
@@ -918,6 +1002,22 @@ export default function App() {
                             title="Añadir 1,000,000,000 pts (1B)"
                           >
                             +1B
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1 mt-1">
+                          <button
+                            onClick={() => { playBuySound(); useGameStore.getState().addCurrency('chips', 50, 'cheat'); }}
+                            className="py-1 bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-500/60 border-b-2 border-b-emerald-900 text-emerald-200 rounded-lg text-[11px] font-pixel font-bold active:translate-y-0.5 cursor-pointer transition-all"
+                            title="Añadir 50 Fichas de Casino"
+                          >
+                            +50 Fichas
+                          </button>
+                          <button
+                            onClick={() => { playBuySound(); useGameStore.getState().addCurrency('shards', 10, 'cheat'); }}
+                            className="py-1 bg-fuchsia-950/70 hover:bg-fuchsia-900 border border-fuchsia-500/60 border-b-2 border-b-fuchsia-900 text-fuchsia-200 rounded-lg text-[11px] font-pixel font-bold active:translate-y-0.5 cursor-pointer transition-all"
+                            title="Añadir 10 Fragmentos Cósmicos"
+                          >
+                            +10 Frag
                           </button>
                         </div>
                       </div>
